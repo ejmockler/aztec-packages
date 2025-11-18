@@ -166,6 +166,7 @@ void build_constraints(Builder& builder, AcirProgram& program, const ProgramMeta
     // Add range constraint
     for (const auto& [constraint, opcode_idx] :
          zip_view(constraint_system.range_constraints, constraint_system.original_opcode_indices.range_constraints)) {
+        const auto& constraint = constraint_system.range_constraints.at(i);
         uint32_t range = constraint.num_bits;
         builder.create_range_constraint(constraint.witness, range, "");
         gate_counter.track_diff(constraint_system.gates_per_opcode, opcode_idx);
