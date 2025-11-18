@@ -24,6 +24,7 @@ void create_logic_gate(Builder& builder,
 
     field_ct res = bb::stdlib::logic<Builder>::create_logic_constraint(left, right, num_bits, is_xor_gate);
     field_ct our_res = field_ct::from_witness_index(&builder, result);
+    bb::stdlib::mark_witness_as_logic(res);
     res.assert_equal(our_res);
 }
 
