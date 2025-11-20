@@ -160,7 +160,9 @@ void build_constraints(Builder& builder, AcirProgram& program, const ProgramMeta
          zip_view(constraint_system.logic_constraints, constraint_system.original_opcode_indices.logic_constraints)) {
         create_logic_gate(
             builder, constraint.a, constraint.b, constraint.result, constraint.num_bits, constraint.is_xor_gate);
-        gate_counter.track_diff(constraint_system.gates_per_opcode, opcode_idx);
+        builder.save_and_clear_logic_witnesses();
+        gate_counter.track_diff(constraint_system.gates_per_opcode,
+                                constraint_system.original_opcode_indices.logic_constraints.at(i));
     }
 
     // Add range constraint
