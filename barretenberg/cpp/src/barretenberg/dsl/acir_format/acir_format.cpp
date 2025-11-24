@@ -178,7 +178,9 @@ void build_constraints(Builder& builder, AcirProgram& program, const ProgramMeta
     for (const auto& [constraint, opcode_idx] :
          zip_view(constraint_system.aes128_constraints, constraint_system.original_opcode_indices.aes128_constraints)) {
         create_aes128_constraints(builder, constraint);
-        gate_counter.track_diff(constraint_system.gates_per_opcode, opcode_idx);
+        builder.save_and_clear_aes128_witnesses();
+        gate_counter.track_diff(constraint_system.gates_per_opcode,
+                                constraint_system.original_opcode_indices.aes128_constraints.at(i));
     }
 
     // Add sha256 constraints
