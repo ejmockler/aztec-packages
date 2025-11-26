@@ -934,13 +934,28 @@ export class AztecNodeService implements AztecNode, AztecNodeAdmin, Traceable {
   }
 
   /**
-   * Returns all the L2 to L1 messages in a block.
-   * @param blockNumber - The block number at which to get the data.
-   * @returns The L2 to L1 messages (undefined if the block number is not found).
+   * Returns all the L2 to L1 messages in an epoch.
+   * @param epoch - The epoch at which to get the data.
+   * @returns The L2 to L1 messages (empty array if the epoch is not found).
    */
-  public async getL2ToL1Messages(blockNumber: L2BlockNumber): Promise<Fr[][] | undefined> {
-    const block = await this.blockSource.getBlock(blockNumber === 'latest' ? await this.getBlockNumber() : blockNumber);
-    return block?.body.txEffects.map(txEffect => txEffect.l2ToL1Msgs);
+  public async getL2ToL1Messages(epoch: bigint): Promise<Fr[][][][]> {
+    // Assumes `getBlocksForEpoch` returns blocks in ascending order of block number.
+    const blocks = await this.blockSource.getBlocksForEpoch(epoch);
+    const blocksInCheckpoints: L2Block[][] = [];
+    let previousSlotNumber = Fr.ZERO;
+    let checkpointIndex = -1;
+    for (const block of blocks) {
+      const slotNumber = block.header.globalVariables.slotNumber;
+      if (!slotNumber.equals(previousSlotNumber)) {
+        checkpointIndex++;
+        blocksInCheckpoints.push([]);
+        previousSlotNumber = slotNumber;
+      }
+      blocksInCheckpoints[checkpointIndex].push(block);
+    }
+    return blocksInCheckpoints.map(blocks =>
+      blocks.map(block => block.body.txEffects.map(txEffect => txEffect.l2ToL1Msgs)),
+    );
   }
 
   /**

@@ -26,6 +26,7 @@ import {IERC20} from "@oz/token/ERC20/IERC20.sol";
 struct PublicInputArgs {
   bytes32 previousArchive;
   bytes32 endArchive;
+  bytes32 outHash;
   address proverId;
 }
 

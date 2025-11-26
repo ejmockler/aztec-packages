@@ -33,11 +33,9 @@
     "header": {
       "lastArchiveRoot": "0x1e96cc7e7eaaed1fe526ae5d1f86f326d8ffce3eed61cae72944591840f515ab",
       "blockHeadersHash": "0x0d78d08e73eba6af2abf8477e70e44bb3fe7336f244cb199e2b5299e60bc07d4",
-      "contentCommitment": {
-        "blobsHash": "0x002f6d28347226a4c0c6dfa38663f542efa5fe48ed72ae7d9b2a9a57c8ee5cd8",
-        "inHash": "0x004c9b6f1dcd0d52543f9766f97c31ed93d988e429af87234a6574ec7dadfc29",
-        "outHash": "0x0000000000000000000000000000000000000000000000000000000000000000"
-      },
+      "blobsHash": "0x002f6d28347226a4c0c6dfa38663f542efa5fe48ed72ae7d9b2a9a57c8ee5cd8",
+      "inHash": "0x004c9b6f1dcd0d52543f9766f97c31ed93d988e429af87234a6574ec7dadfc29",
+      "outHash": "0x0000000000000000000000000000000000000000000000000000000000000000",
       "slotNumber": 108,
       "timestamp": 1763997068,
       "coinbase": "0x84a7f9f7dd6982213a81be3b7b1164772d32c8c5",

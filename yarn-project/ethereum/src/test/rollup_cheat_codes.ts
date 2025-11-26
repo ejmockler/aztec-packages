@@ -1,4 +1,4 @@
-import { RollupContract, type ViemPublicClient } from '@aztec/ethereum';
+import { OutboxContract, RollupContract, type ViemPublicClient } from '@aztec/ethereum';
 import type { L1ContractAddresses } from '@aztec/ethereum/l1-contract-addresses';
 import { EthAddress } from '@aztec/foundation/eth-address';
 import { createLogger } from '@aztec/foundation/log';
@@ -241,6 +241,15 @@ export class RollupCheatCodes {
       });
 
       return newInProgress;
+    });
+  }
+
+  public insertOutbox(epoch: bigint, outHash: bigint) {
+    return this.ethCheatCodes.execWithPausedAnvil(async () => {
+      const outboxAddress = await this.rollup.read.getOutbox();
+      const epochRootSlot = OutboxContract.getEpochRootStorageSlot(epoch);
+      await this.ethCheatCodes.store(EthAddress.fromString(outboxAddress), epochRootSlot, outHash);
+      this.logger.warn(`Advanced outbox to epoch ${epoch} with out hash ${outHash}`);
     });
   }
 

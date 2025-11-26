@@ -2,7 +2,6 @@ use crate::{
     abis::gas_fees::GasFees,
     address::{AztecAddress, EthAddress},
     constants::{CHECKPOINT_HEADER_LENGTH, CHECKPOINT_HEADER_SIZE_IN_BYTES},
-    content_commitment::ContentCommitment,
     hash::sha256_to_field,
     traits::{Deserialize, Empty, FromField, Hash, Serialize, ToField},
 };
@@ -12,7 +11,9 @@ use std::meta::derive;
 pub struct CheckpointHeader {
     pub last_archive_root: Field,
     pub block_headers_hash: Field,
-    pub content_commitment: ContentCommitment,
+    pub blobs_hash: Field,
+    pub in_hash: Field,
+    pub out_hash: Field,
     pub slot_number: Field,
     // The timestamp of the slot. All blocks in the checkpoint must have a timestamp less than or equal to this value.
     pub timestamp: u64,
@@ -29,7 +30,9 @@ impl Empty for CheckpointHeader {
         Self {
             last_archive_root: 0,
             block_headers_hash: 0,
-            content_commitment: ContentCommitment::empty(),
+            blobs_hash: 0,
+            in_hash: 0,
+            out_hash: 0,
             slot_number: 0,
             timestamp: 0,
             coinbase: EthAddress::zero(),
@@ -46,9 +49,9 @@ impl CheckpointHeader {
 
         let last_archive_root_bytes: [u8; 32] = self.last_archive_root.to_be_bytes();
         let block_headers_hash_bytes: [u8; 32] = self.block_headers_hash.to_be_bytes();
-        let blobs_hash_bytes: [u8; 32] = self.content_commitment.blobs_hash.to_be_bytes();
-        let in_hash_bytes: [u8; 32] = self.content_commitment.in_hash.to_be_bytes();
-        let out_hash_bytes: [u8; 32] = self.content_commitment.out_hash.to_be_bytes();
+        let blobs_hash_bytes: [u8; 32] = self.blobs_hash.to_be_bytes();
+        let in_hash_bytes: [u8; 32] = self.in_hash.to_be_bytes();
+        let out_hash_bytes: [u8; 32] = self.out_hash.to_be_bytes();
         let slot_number_bytes: [u8; 32] = self.slot_number.to_be_bytes();
         let coinbase_bytes: [u8; 20] = self.coinbase.to_be_bytes();
         let fee_recipient_bytes: [u8; 32] = self.fee_recipient.to_field().to_be_bytes();
@@ -116,7 +119,9 @@ fn checkpoint_header_hash_matches_ts() {
     let header = CheckpointHeader {
         last_archive_root: 123,
         block_headers_hash: 456,
-        content_commitment: ContentCommitment { blobs_hash: 77, in_hash: 88, out_hash: 99 },
+        blobs_hash: 77,
+        in_hash: 88,
+        out_hash: 99,
         slot_number: 1234,
         timestamp: 5678,
         coinbase: EthAddress::from_field(9090),

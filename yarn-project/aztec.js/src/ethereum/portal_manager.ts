@@ -413,26 +413,26 @@ export class L1TokenPortalManager extends L1ToL2TokenPortalManager {
    * Withdraws funds from the portal by consuming an L2 to L1 message. Returns once the tx is mined on L1.
    * @param amount - Amount to withdraw.
    * @param recipient - Who will receive the funds.
-   * @param blockNumber - L2 block number of the message.
+   * @param epochNumber - Epoch number of the message.
    * @param messageIndex - Index of the message.
    * @param siblingPath - Sibling path of the message.
    */
   public async withdrawFunds(
     amount: bigint,
     recipient: EthAddress,
-    blockNumber: bigint,
+    epochNumber: bigint,
     messageIndex: bigint,
     siblingPath: SiblingPath<number>,
   ) {
     this.logger.info(
-      `Sending L1 tx to consume message at block ${blockNumber} index ${messageIndex} to withdraw ${amount}`,
+      `Sending L1 tx to consume message at epoch ${epochNumber} index ${messageIndex} to withdraw ${amount}`,
     );
 
     const messageLeafId = getL2ToL1MessageLeafId({ leafIndex: messageIndex, siblingPath });
-    const isConsumedBefore = await this.outbox.read.hasMessageBeenConsumedAtCheckpoint([blockNumber, messageLeafId]);
+    const isConsumedBefore = await this.outbox.read.hasMessageBeenConsumedAtEpoch([epochNumber, messageLeafId]);
     if (isConsumedBefore) {
       throw new Error(
-        `L1 to L2 message at block ${blockNumber} index ${messageIndex} height ${siblingPath.pathSize} has already been consumed`,
+        `L2 to L1 message at epoch ${epochNumber} index ${messageIndex} height ${siblingPath.pathSize} has already been consumed`,
       );
     }
 
@@ -441,7 +441,7 @@ export class L1TokenPortalManager extends L1ToL2TokenPortalManager {
       recipient.toString(),
       amount,
       false,
-      BigInt(blockNumber),
+      epochNumber,
       messageIndex,
       siblingPath.toBufferArray().map((buf: Buffer): Hex => `0x${buf.toString('hex')}`),
     ]);
@@ -450,10 +450,10 @@ export class L1TokenPortalManager extends L1ToL2TokenPortalManager {
       hash: await this.extendedClient.writeContract(withdrawRequest),
     });
 
-    const isConsumedAfter = await this.outbox.read.hasMessageBeenConsumedAtCheckpoint([blockNumber, messageLeafId]);
+    const isConsumedAfter = await this.outbox.read.hasMessageBeenConsumedAtEpoch([epochNumber, messageLeafId]);
     if (!isConsumedAfter) {
       throw new Error(
-        `L1 to L2 message at block ${blockNumber} index ${messageIndex} height ${siblingPath.pathSize} not consumed after withdrawal`,
+        `L2 to L1 message at epoch ${epochNumber} index ${messageIndex} height ${siblingPath.pathSize} not consumed after withdrawal`,
       );
     }
   }

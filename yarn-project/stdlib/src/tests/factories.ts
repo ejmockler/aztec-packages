@@ -153,7 +153,6 @@ import { NullifierLeaf, NullifierLeafPreimage } from '../trees/nullifier_leaf.js
 import { PublicDataTreeLeaf, PublicDataTreeLeafPreimage } from '../trees/public_data_leaf.js';
 import { BlockHeader } from '../tx/block_header.js';
 import { CallContext } from '../tx/call_context.js';
-import { ContentCommitment } from '../tx/content_commitment.js';
 import { FunctionData } from '../tx/function_data.js';
 import { GlobalVariables } from '../tx/global_variables.js';
 import { PartialStateReference } from '../tx/partial_state_reference.js';
@@ -831,6 +830,7 @@ export function makeCheckpointRollupPublicInputs(seed = 0) {
     makeAppendOnlyTreeSnapshot(seed + 0x100),
     makeAppendOnlyTreeSnapshot(seed + 0x200),
     makeTuple(AZTEC_MAX_EPOCH_DURATION, () => fr(seed), 0x300),
+    makeTuple(AZTEC_MAX_EPOCH_DURATION, () => fr(seed), 0x400),
     makeTuple(AZTEC_MAX_EPOCH_DURATION, () => makeFeeRecipient(seed), 0x700),
     startBlobAccumulator.toBlobAccumulator(),
     makeBatchedBlobAccumulator(seed + 1).toBlobAccumulator(),
@@ -866,18 +866,12 @@ export function makeRootRollupPublicInputs(seed = 0): RootRollupPublicInputs {
   return new RootRollupPublicInputs(
     fr(seed + 0x100),
     fr(seed + 0x200),
-    makeTuple(AZTEC_MAX_EPOCH_DURATION, () => fr(seed), 0x300),
+    fr(seed + 0x300),
+    makeTuple(AZTEC_MAX_EPOCH_DURATION, () => fr(seed), 0x400),
     makeTuple(AZTEC_MAX_EPOCH_DURATION, () => makeFeeRecipient(seed), 0x500),
     makeEpochConstantData(seed + 0x600),
     makeBatchedBlobAccumulator(seed).toFinalBlobAccumulator(),
   );
-}
-
-/**
- * Makes content commitment
- */
-export function makeContentCommitment(seed = 0): ContentCommitment {
-  return new ContentCommitment(fr(seed + 0x100), fr(seed + 0x200), fr(seed + 0x300));
 }
 
 /**
@@ -911,7 +905,9 @@ export function makeL2BlockHeader(
 ) {
   return new L2BlockHeader(
     makeAppendOnlyTreeSnapshot(seed + 0x100),
-    overrides?.contentCommitment ?? makeContentCommitment(seed + 0x200),
+    overrides?.blobsHash ?? fr(seed + 0x200),
+    overrides?.inHash ?? fr(seed + 0x300),
+    overrides?.outHash ?? fr(seed + 0x400),
     overrides?.state ?? makeStateReference(seed + 0x600),
     makeGlobalVariables((seed += 0x700), {
       ...(blockNumber ? { blockNumber } : {}),
@@ -928,13 +924,15 @@ export function makeCheckpointHeader(seed = 0) {
   return CheckpointHeader.from({
     lastArchiveRoot: fr(seed + 0x100),
     blockHeadersHash: fr(seed + 0x150),
-    contentCommitment: makeContentCommitment(seed + 0x200),
-    slotNumber: new Fr(seed + 0x300),
-    timestamp: BigInt(seed + 0x400),
-    coinbase: makeEthAddress(seed + 0x500),
-    feeRecipient: makeAztecAddress(seed + 0x600),
-    gasFees: makeGasFees(seed + 0x700),
-    totalManaUsed: fr(seed + 0x800),
+    blobsHash: fr(seed + 0x200),
+    inHash: fr(seed + 0x300),
+    outHash: fr(seed + 0x350),
+    slotNumber: new Fr(seed + 0x400),
+    timestamp: BigInt(seed + 0x500),
+    coinbase: makeEthAddress(seed + 0x600),
+    feeRecipient: makeAztecAddress(seed + 0x700),
+    gasFees: makeGasFees(seed + 0x800),
+    totalManaUsed: fr(seed + 0x900),
   });
 }
 
@@ -975,7 +973,7 @@ function makeCountedL2ToL1Message(seed = 0) {
   return new CountedL2ToL1Message(makeL2ToL1Message(seed), seed + 2);
 }
 
-function makeScopedL2ToL1Message(seed = 1) {
+export function makeScopedL2ToL1Message(seed = 1) {
   return new ScopedL2ToL1Message(makeL2ToL1Message(seed), makeAztecAddress(seed + 3));
 }
 

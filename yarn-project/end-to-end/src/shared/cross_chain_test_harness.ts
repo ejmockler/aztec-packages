@@ -321,17 +321,11 @@ export class CrossChainTestHarness {
 
   withdrawFundsFromBridgeOnL1(
     amount: bigint,
-    blockNumber: number | bigint,
+    epochNumber: bigint,
     messageIndex: bigint,
     siblingPath: SiblingPath<number>,
   ) {
-    return this.l1TokenPortalManager.withdrawFunds(
-      amount,
-      this.ethAccount,
-      BigInt(blockNumber),
-      messageIndex,
-      siblingPath,
-    );
+    return this.l1TokenPortalManager.withdrawFunds(amount, this.ethAccount, epochNumber, messageIndex, siblingPath);
   }
 
   async transferToPrivateOnL2(shieldAmount: bigint) {

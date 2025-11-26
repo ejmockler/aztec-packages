@@ -35,6 +35,7 @@ import { foundry } from 'viem/chains';
 import { createAccountLogs } from '../cli/util.js';
 import { DefaultMnemonic } from '../mnemonic.js';
 import { AnvilTestWatcher } from '../testing/anvil_test_watcher.js';
+import { EpochTestSettler } from '../testing/epoch_test_settler.js';
 import { getBananaFPCAddress, setupBananaFPC } from './banana_fpc.js';
 import { getSponsoredFPCAddress } from './sponsored_fpc.js';
 
@@ -116,7 +117,11 @@ export async function createLocalNetwork(config: Partial<LocalNetworkConfig> = {
   if ((config.l1RpcUrls?.length || 0) > 1) {
     logger.warn(`Multiple L1 RPC URLs provided. Local networks will only use the first one: ${l1RpcUrl}`);
   }
-  const aztecNodeConfig: AztecNodeConfig = { ...getConfigEnvVars(), ...config };
+  const aztecNodeConfig: AztecNodeConfig = {
+    ...getConfigEnvVars(),
+    aztecEpochDuration: 4,
+    ...config,
+  };
   const hdAccount = mnemonicToAccount(config.l1Mnemonic || DefaultMnemonic);
   if (
     aztecNodeConfig.publisherPrivateKeys == undefined ||
@@ -153,15 +158,18 @@ export async function createLocalNetwork(config: Partial<LocalNetworkConfig> = {
     : [];
   const { genesisArchiveRoot, prefilledPublicData, fundingNeeded } = await getGenesisValues(fundedAddresses);
 
-  let watcher: AnvilTestWatcher | undefined = undefined;
   const dateProvider = new TestDateProvider();
+
+  let cheatcodes: EthCheatCodes | undefined;
+  let rollupAddress: EthAddress | undefined;
+  let watcher: AnvilTestWatcher | undefined;
   if (!aztecNodeConfig.p2pEnabled) {
-    const l1ContractAddresses = await deployContractsToL1(aztecNodeConfig, hdAccount, undefined, {
+    ({ rollupAddress } = await deployContractsToL1(aztecNodeConfig, hdAccount, undefined, {
       assumeProvenThroughBlockNumber: Number.MAX_SAFE_INTEGER,
       genesisArchiveRoot,
       salt: config.deployAztecContractsSalt ? parseInt(config.deployAztecContractsSalt) : undefined,
       feeJuicePortalInitialBalance: fundingNeeded,
-    });
+    }));
 
     const chain =
       aztecNodeConfig.l1RpcUrls.length > 0
@@ -173,13 +181,12 @@ export async function createLocalNetwork(config: Partial<LocalNetworkConfig> = {
       transport: fallback([httpViemTransport(l1RpcUrl)]) as any,
     });
 
-    watcher = new AnvilTestWatcher(
-      new EthCheatCodes([l1RpcUrl], dateProvider),
-      l1ContractAddresses.rollupAddress,
-      publicClient,
-      dateProvider,
-    );
+    cheatcodes = new EthCheatCodes([l1RpcUrl], dateProvider);
+
+    watcher = new AnvilTestWatcher(cheatcodes, rollupAddress, publicClient, dateProvider);
     watcher.setisLocalNetwork(true);
+    watcher.setIsMarkingAsProven(false); // Do not mark as proven in the watcher. It's marked in the epochTestSettler after the out hash is set.
+
     await watcher.start();
   }
 
@@ -191,6 +198,14 @@ export async function createLocalNetwork(config: Partial<LocalNetworkConfig> = {
     { telemetry, blobSinkClient, dateProvider },
     { prefilledPublicData },
   );
+
+  let epochTestSettler: EpochTestSettler | undefined;
+  if (!aztecNodeConfig.p2pEnabled) {
+    epochTestSettler = new EpochTestSettler(cheatcodes!, rollupAddress!, node.getBlockSource(), {
+      pollingIntervalMs: 200,
+    });
+    await epochTestSettler.start();
+  }
 
   if (initialAccounts.length) {
     const PXEConfig = { proverEnabled: aztecNodeConfig.realProofs };
@@ -216,6 +231,7 @@ export async function createLocalNetwork(config: Partial<LocalNetworkConfig> = {
   const stop = async () => {
     await node.stop();
     await watcher?.stop();
+    await epochTestSettler?.stop();
   };
 
   return { node, stop };

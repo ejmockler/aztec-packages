@@ -212,11 +212,12 @@ export interface AztecNode
   isL1ToL2MessageSynced(l1ToL2Message: Fr): Promise<boolean>;
 
   /**
-   * Returns all the L2 to L1 messages in a block.
-   * @param blockNumber - The block number at which to get the data.
-   * @returns The L2 to L1 messages (undefined if the block number is not found).
+   * Returns all the L2 to L1 messages in an epoch.
+   * @param epoch - The epoch at which to get the data.
+   * @returns A nested array of the L2 to L1 messages in each tx of each block in each checkpoint in the epoch (empty
+   * array if the epoch is not found).
    */
-  getL2ToL1Messages(blockNumber: L2BlockNumber): Promise<Fr[][] | undefined>;
+  getL2ToL1Messages(epoch: bigint): Promise<Fr[][][][]>;
 
   /**
    * Get a block specified by its number.
@@ -546,8 +547,8 @@ export const AztecNodeApiSchema: ApiSchemaFor<AztecNode> = {
 
   getL2ToL1Messages: z
     .function()
-    .args(L2BlockNumberSchema)
-    .returns(z.array(z.array(schemas.Fr)).optional()),
+    .args(schemas.BigInt)
+    .returns(z.array(z.array(z.array(z.array(schemas.Fr))))),
 
   getBlock: z.function().args(L2BlockNumberSchema).returns(L2Block.schema.optional()),
 

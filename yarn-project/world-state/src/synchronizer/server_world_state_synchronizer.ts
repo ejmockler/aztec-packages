@@ -319,7 +319,7 @@ export class ServerWorldStateSynchronizer
     // Note that we cannot optimize this check by checking the root of the subtree after inserting the messages
     // to the real L1_TO_L2_MESSAGE_TREE (like we do in merkleTreeDb.handleL2BlockAndMessages(...)) because that
     // tree uses pedersen and we don't have access to the converted root.
-    await this.verifyMessagesHashToInHash(l1ToL2Messages, l2Block.header.contentCommitment.inHash);
+    await this.verifyMessagesHashToInHash(l1ToL2Messages, l2Block.header.inHash);
 
     // If the above check succeeds, we can proceed to handle the block.
     this.log.trace(`Pushing L2 block ${l2Block.number} to merkle tree db `, {

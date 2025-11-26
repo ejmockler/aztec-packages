@@ -98,7 +98,7 @@ export class L2Block {
 
     return new L2Block(
       makeAppendOnlyTreeSnapshot(l2BlockNum + 1),
-      makeL2BlockHeader(0, l2BlockNum, slotNumber ?? l2BlockNum, {}, inHash),
+      makeL2BlockHeader(0, l2BlockNum, slotNumber ?? l2BlockNum, { inHash }),
       body,
     );
   }

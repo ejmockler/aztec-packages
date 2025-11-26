@@ -6,7 +6,6 @@ import { updateInlineTestData } from '@aztec/foundation/testing/files';
 import { AztecAddress } from '../aztec-address/index.js';
 import { GasFees } from '../gas/gas_fees.js';
 import { makeCheckpointHeader } from '../tests/factories.js';
-import { ContentCommitment } from '../tx/content_commitment.js';
 import { CheckpointHeader } from './checkpoint_header.js';
 
 describe('CheckpointHeader', () => {
@@ -36,7 +35,9 @@ describe('CheckpointHeader', () => {
     const header = CheckpointHeader.from({
       lastArchiveRoot: new Fr(123),
       blockHeadersHash: new Fr(456),
-      contentCommitment: new ContentCommitment(new Fr(77), new Fr(88), new Fr(99)),
+      blobsHash: new Fr(77),
+      inHash: new Fr(88),
+      outHash: new Fr(99),
       slotNumber: new Fr(1234),
       timestamp: BigInt(5678),
       coinbase: EthAddress.fromField(new Fr(9090)),

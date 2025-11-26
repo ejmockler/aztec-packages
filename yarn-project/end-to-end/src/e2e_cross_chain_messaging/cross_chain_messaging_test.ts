@@ -1,22 +1,26 @@
 import type { AztecNodeConfig } from '@aztec/aztec-node';
 import { AztecAddress, EthAddress } from '@aztec/aztec.js/addresses';
+import { waitForProven } from '@aztec/aztec.js/contracts';
 import { type Logger, createLogger } from '@aztec/aztec.js/log';
 import type { AztecNode } from '@aztec/aztec.js/node';
+import type { TxReceipt } from '@aztec/aztec.js/tx';
 import { CheatCodes } from '@aztec/aztec/testing';
 import {
   type DeployL1ContractsArgs,
   type DeployL1ContractsReturnType,
   type ExtendedViemWalletClient,
+  InboxContract,
+  OutboxContract,
+  RollupContract,
   createExtendedL1Client,
   deployL1Contract,
 } from '@aztec/ethereum';
-import { InboxAbi, OutboxAbi, TestERC20Abi, TestERC20Bytecode } from '@aztec/l1-artifacts';
+import { sleep } from '@aztec/foundation/sleep';
+import { TestERC20Abi, TestERC20Bytecode } from '@aztec/l1-artifacts';
 import { TokenContract } from '@aztec/noir-contracts.js/Token';
 import { TokenBridgeContract } from '@aztec/noir-contracts.js/TokenBridge';
 import type { AztecNodeAdmin } from '@aztec/stdlib/interfaces/client';
 import type { TestWallet } from '@aztec/test-wallet/server';
-
-import { getContract } from 'viem';
 
 import { MNEMONIC } from '../fixtures/fixtures.js';
 import {
@@ -33,6 +37,7 @@ const { E2E_DATA_PATH: dataPath } = process.env;
 
 export class CrossChainMessagingTest {
   private snapshotManager: ISnapshotManager;
+  private requireEpochProven: boolean;
   logger: Logger;
   aztecNode!: AztecNode;
   aztecNodeConfig!: AztecNodeConfig;
@@ -50,8 +55,9 @@ export class CrossChainMessagingTest {
   l2Token!: TokenContract;
   l2Bridge!: TokenBridgeContract;
 
-  inbox!: any; // GetContractReturnType<typeof InboxAbi> | undefined;
-  outbox!: any; // GetContractReturnType<typeof OutboxAbi> | undefined;
+  rollup!: RollupContract;
+  inbox!: InboxContract;
+  outbox!: OutboxContract;
   cheatCodes!: CheatCodes;
 
   deployL1ContractsValues!: DeployL1ContractsReturnType;
@@ -62,10 +68,7 @@ export class CrossChainMessagingTest {
       initialValidators: [],
       ...deployL1ContractsArgs,
     });
-  }
-
-  async assumeProven() {
-    await this.cheatCodes.rollup.markAsProven();
+    this.requireEpochProven = opts.startProverNode ?? false;
   }
 
   async setup() {
@@ -76,6 +79,28 @@ export class CrossChainMessagingTest {
     this.cheatCodes = this.ctx.cheatCodes;
     this.deployL1ContractsValues = this.ctx.deployL1ContractsValues;
     this.aztecNodeAdmin = this.ctx.aztecNode;
+
+    if (this.requireEpochProven) {
+      // Turn off the watcher to prevent it from keep marking blocks as proven.
+      this.ctx.watcher.setIsMarkingAsProven(false);
+    }
+  }
+
+  async advanceToEpochProven(l2TxReceipt: TxReceipt): Promise<bigint> {
+    const epoch = await this.rollup.getEpochNumberForCheckpoint(l2TxReceipt.blockNumber!);
+    // Warp to the next epoch.
+    await this.cheatCodes.rollup.advanceToEpoch(epoch + 1n);
+    // Wait for the tx to be proven.
+    await waitForProven(this.aztecNode, l2TxReceipt, { provenTimeout: 300 });
+    // Return the epoch the tx is in.
+    return epoch;
+  }
+
+  async catchUpProvenChain() {
+    const bn = await this.aztecNode.getBlockNumber();
+    while ((await this.aztecNode.getProvenBlockNumber()) < bn) {
+      await sleep(1000);
+    }
   }
 
   snapshot = <T>(
@@ -143,17 +168,12 @@ export class CrossChainMessagingTest {
         const tokenPortalAddress = EthAddress.fromString(crossChainContext.tokenPortal.toString());
 
         const l1Client = createExtendedL1Client(this.aztecNodeConfig.l1RpcUrls, MNEMONIC);
+        this.l1Client = l1Client;
 
-        const inbox = getContract({
-          address: this.aztecNodeConfig.l1Contracts.inboxAddress.toString(),
-          abi: InboxAbi,
-          client: l1Client,
-        });
-        const outbox = getContract({
-          address: this.aztecNodeConfig.l1Contracts.outboxAddress.toString(),
-          abi: OutboxAbi,
-          client: l1Client,
-        });
+        const l1Contracts = this.aztecNodeConfig.l1Contracts;
+        this.rollup = new RollupContract(l1Client, l1Contracts.rollupAddress.toString());
+        this.inbox = new InboxContract(l1Client, l1Contracts.inboxAddress.toString());
+        this.outbox = new OutboxContract(l1Client, l1Contracts.outboxAddress.toString());
 
         this.crossChainTestHarness = new CrossChainTestHarness(
           this.aztecNode,
@@ -169,9 +189,6 @@ export class CrossChainMessagingTest {
           this.ownerAddress,
         );
 
-        this.l1Client = l1Client;
-        this.inbox = inbox;
-        this.outbox = outbox;
         return Promise.resolve();
       },
     );

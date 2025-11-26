@@ -1,3 +1,4 @@
+pub(crate) mod utils;
 pub(crate) mod root_rollup_private_inputs;
 mod tests;
 

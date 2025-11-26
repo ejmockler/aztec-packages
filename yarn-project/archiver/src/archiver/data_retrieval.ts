@@ -127,7 +127,9 @@ export async function retrievedBlockToPublishedL2Block({
     const header = L2BlockHeader.from({
       ...blockHeader,
       blockHeadersHash: checkpointHeader.blockHeadersHash,
-      contentCommitment: checkpointHeader.contentCommitment,
+      blobsHash: checkpointHeader.blobsHash,
+      inHash: checkpointHeader.inHash,
+      outHash: checkpointHeader.outHash,
     });
 
     const newArchive = new AppendOnlyTreeSnapshot(newArchiveRoots[i], l2BlockNumber + 1);

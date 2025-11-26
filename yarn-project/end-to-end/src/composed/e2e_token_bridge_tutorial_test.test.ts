@@ -1,11 +1,12 @@
 // This test should only use packages that are published to npm
 // docs:start:imports
 import { EthAddress } from '@aztec/aztec.js/addresses';
+import { waitForProven } from '@aztec/aztec.js/contracts';
 import { L1TokenManager, L1TokenPortalManager } from '@aztec/aztec.js/ethereum';
 import { Fr } from '@aztec/aztec.js/fields';
 import { createLogger } from '@aztec/aztec.js/log';
 import { createAztecNodeClient, waitForNode } from '@aztec/aztec.js/node';
-import { createExtendedL1Client, deployL1Contract } from '@aztec/ethereum';
+import { RollupContract, createExtendedL1Client, deployL1Contract } from '@aztec/ethereum';
 import {
   FeeAssetHandlerAbi,
   FeeAssetHandlerBytecode,
@@ -204,6 +205,7 @@ describe('e2e_cross_chain_messaging token_bridge_tutorial_test', () => {
       .exit_to_l1_public(EthAddress.fromString(ownerEthAddress), withdrawAmount, EthAddress.ZERO, authwitNonce)
       .send({ from: ownerAztecAddress })
       .wait();
+    await waitForProven(node, l2TxReceipt, { provenTimeout: 300 });
 
     const newL2Balance = await l2TokenContract.methods
       .balance_of_public(ownerAztecAddress)
@@ -212,7 +214,10 @@ describe('e2e_cross_chain_messaging token_bridge_tutorial_test', () => {
     // docs:end:l2-withdraw
 
     // docs:start:l1-withdraw
-    const result = await computeL2ToL1MembershipWitness(node, await node.getBlockNumber(), l2ToL1Message);
+    const rollup = new RollupContract(l1Client, l1ContractAddresses.rollupAddress.toString());
+    const epoch = await rollup.getEpochNumberForCheckpoint(l2TxReceipt.blockNumber!);
+
+    const result = await computeL2ToL1MembershipWitness(node, epoch, l2ToL1Message);
     if (!result) {
       throw new Error('L2 to L1 message not found');
     }
@@ -220,7 +225,7 @@ describe('e2e_cross_chain_messaging token_bridge_tutorial_test', () => {
     await l1PortalManager.withdrawFunds(
       withdrawAmount,
       EthAddress.fromString(ownerEthAddress),
-      BigInt(l2TxReceipt.blockNumber!),
+      epoch,
       result.leafIndex,
       result.siblingPath,
     );
