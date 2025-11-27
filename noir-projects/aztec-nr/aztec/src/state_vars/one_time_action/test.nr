@@ -21,7 +21,7 @@ unconstrained fn in_utility(
     OneTimeAction::new(context, storage_slot)
 }
 
-unconstrained fn assert_done(
+unconstrained fn expect_done_to_be(
     done: bool,
     env: TestEnvironment,
     storage_slot: Field,
@@ -35,22 +35,22 @@ unconstrained fn assert_done(
     });
 }
 
-unconstrained fn assert_it_is_not_done(
+unconstrained fn expect_not_done(
     env: TestEnvironment,
     storage_slot: Field,
     action: MockStruct,
     owner: AztecAddress,
 ) {
-    assert_done(false, env, storage_slot, action, owner)
+    expect_done_to_be(false, env, storage_slot, action, owner)
 }
 
-unconstrained fn assert_it_is_done(
+unconstrained fn expect_done(
     env: TestEnvironment,
     storage_slot: Field,
     action: MockStruct,
     owner: AztecAddress,
 ) {
-    assert_done(true, env, storage_slot, action, owner)
+    expect_done_to_be(true, env, storage_slot, action, owner)
 }
 
 #[test(should_fail_with = "Duplicate siloed nullifier")]
@@ -74,7 +74,7 @@ unconstrained fn is_done_when_it_was_not_done() {
     let owner = env.create_light_account();
 
     let action = MockStruct::new(1, 2);
-    assert_it_is_not_done(env, STORAGE_SLOT, action, owner);
+    expect_not_done(env, STORAGE_SLOT, action, owner);
 }
 
 #[test(should_fail_with = "already present")]
@@ -90,7 +90,7 @@ unconstrained fn do_action_twice_separate_tx() {
         state_var.at(owner).do(action);
     });
 
-    assert_it_is_done(env, STORAGE_SLOT, action, owner);
+    expect_done(env, STORAGE_SLOT, action, owner);
 
     env.private_context(|context| {
         let state_var = in_private(context);
@@ -115,8 +115,8 @@ unconstrained fn do_action_twice_different_owner() {
         state_var.at(owner_b).do(action);
     });
 
-    assert_it_is_done(env, STORAGE_SLOT, action, owner_a);
-    assert_it_is_done(env, STORAGE_SLOT, action, owner_b);
+    expect_done(env, STORAGE_SLOT, action, owner_a);
+    expect_done(env, STORAGE_SLOT, action, owner_b);
 }
 
 #[test]
@@ -135,8 +135,8 @@ unconstrained fn do_two_different_actions() {
         state_var.at(owner).do(action_2);
     });
 
-    assert_it_is_done(env, STORAGE_SLOT, action_1, owner);
-    assert_it_is_done(env, STORAGE_SLOT, action_2, owner);
+    expect_done(env, STORAGE_SLOT, action_1, owner);
+    expect_done(env, STORAGE_SLOT, action_2, owner);
 }
 
 #[test]
@@ -154,8 +154,8 @@ unconstrained fn do_two_actions_different_state_vars() {
         state_var_b.at(owner).do(action);
     });
 
-    assert_it_is_done(env, STORAGE_SLOT, action, owner);
-    assert_it_is_done(env, STORAGE_SLOT + 1, action, owner);
+    expect_done(env, STORAGE_SLOT, action, owner);
+    expect_done(env, STORAGE_SLOT + 1, action, owner);
 }
 
 #[test(should_fail_with = "No public key registered")]
