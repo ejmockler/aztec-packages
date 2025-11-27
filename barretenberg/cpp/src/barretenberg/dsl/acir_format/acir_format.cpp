@@ -23,6 +23,7 @@
 #include "barretenberg/stdlib_circuit_builders/mega_circuit_builder.hpp"
 #include "barretenberg/stdlib_circuit_builders/ultra_circuit_builder.hpp"
 #include "barretenberg/transcript/transcript.hpp"
+#include "barretenberg/stdlib_circuit_builders/circuit_builder_base_utils.hpp"
 
 #include <cstddef>
 #include <cstdint>
@@ -177,7 +178,10 @@ void build_constraints(Builder& builder, AcirProgram& program, const ProgramMeta
     // Add aes128 constraints
     for (const auto& [constraint, opcode_idx] :
          zip_view(constraint_system.aes128_constraints, constraint_system.original_opcode_indices.aes128_constraints)) {
+        const auto& before_constraints = bb::get_real_variable_indices_set(builder);
         create_aes128_constraints(builder, constraint);
+        auto constraint_variables = bb::get_difference_real_variable_indices_states(before_constraints, builder);
+        builder.update_constraint_witnesses(constraint_variables);
         builder.save_and_clear_aes128_witnesses();
         gate_counter.track_diff(constraint_system.gates_per_opcode,
                                 constraint_system.original_opcode_indices.aes128_constraints.at(i));
