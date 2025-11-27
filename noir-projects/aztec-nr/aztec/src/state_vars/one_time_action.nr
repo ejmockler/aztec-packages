@@ -47,7 +47,7 @@ where
     ACTION: Serialize,
 {
     fn compute_nullifier(self, action: ACTION, owner_nsk_app: Field) -> Field {
-        // TODO(F-182): make sure we follow the nullifier convention
+        // TODO(F-180): make sure we follow the nullifier convention
         poseidon2_hash_with_separator(
             action.serialize().concat([owner_nsk_app, self.storage_slot]),
             GENERATOR_INDEX__NOTE_HASH,
