@@ -42,19 +42,43 @@ impl<ACTION, Context> OneTimeAction<ACTION, Context> {
     }
 }
 
+impl<ACTION, Context> OneTimeActionWithOwner<ACTION, Context>
+where
+    ACTION: Serialize,
+{
+    fn compute_nullifier(self, action: ACTION, owner_nsk_app: Field) -> Field {
+        // TODO(F-182): make sure we follow the nullifier convention
+        poseidon2_hash_with_separator(
+            action.serialize().concat([owner_nsk_app, self.storage_slot]),
+            GENERATOR_INDEX__NOTE_HASH,
+        )
+    }
+}
+
 impl<ACTION> OneTimeActionWithOwner<ACTION, &mut PrivateContext>
 where
     ACTION: Serialize,
 {
     pub fn do(self, action: ACTION) {
         let owner_nsk_app = self.context.request_nsk_app(get_public_keys(self.owner).npk_m.hash());
+        self.context.push_nullifier(self.compute_nullifier(action, owner_nsk_app));
+    }
 
-        // TODO: make sure we follow the nullifier convention
-        let nullifier = poseidon2_hash_with_separator(
-            action.serialize().concat([owner_nsk_app, self.storage_slot]),
-            GENERATOR_INDEX__NOTE_HASH,
-        );
+    // TODO: write e2e test to test this with kernel prover machinery
+    pub fn assert_done(self, action: ACTION) {
+        let owner_nsk_app = self.context.request_nsk_app(get_public_keys(self.owner).npk_m.hash());
 
-        self.context.push_nullifier(nullifier);
+        let nullifier = self.compute_nullifier(action, owner_nsk_app);
+
+        self.context.push_nullifier_read_request(nullifier, self.context.this_address())
+    }
+}
+
+impl<ACTION> OneTimeActionWithOwner<ACTION, UtilityContext>
+where
+    ACTION: Serialize,
+{
+    pub unconstrained fn is_done(self, action: ACTION, owner_nsk_app: Field) -> bool {
+        check_nullifier_exists(self.compute_nullifier(action, owner_nsk_app))
     }
 }
