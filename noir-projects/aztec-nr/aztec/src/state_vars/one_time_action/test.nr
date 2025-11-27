@@ -1,11 +1,10 @@
 use crate::{
     context::{private_context::PrivateContext, UtilityContext},
-    keys::getters::get_public_keys,
     oracle::random::random,
     state_vars::one_time_action::OneTimeAction,
 };
 use crate::test::{helpers::test_environment::TestEnvironment, mocks::mock_struct::MockStruct};
-use dep::protocol_types::{address::AztecAddress, traits::{FromField, Hash}};
+use dep::protocol_types::{address::AztecAddress, traits::FromField};
 
 global STORAGE_SLOT: Field = 17;
 
@@ -29,14 +28,10 @@ unconstrained fn assert_done(
     action: MockStruct,
     owner: AztecAddress,
 ) {
-    let owner_nsk_app = env.private_context(|context| {
-        context.request_nsk_app(get_public_keys(owner).npk_m.hash())
-    });
-
     env.utility_context(|context| {
         let state_var = in_utility(context, storage_slot);
 
-        assert(state_var.at(owner).is_done(action, owner_nsk_app) == done);
+        assert(state_var.at(owner).is_done(action) == done);
     });
 }
 

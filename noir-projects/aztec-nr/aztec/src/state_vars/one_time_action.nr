@@ -7,7 +7,7 @@ use dep::protocol_types::{
 
 use crate::{
     context::{PrivateContext, UtilityContext},
-    keys::getters::get_public_keys,
+    keys::getters::{get_nsk_app, get_public_keys},
     oracle::notes::check_nullifier_exists,
     state_vars::storage::HasStorageSlot,
 };
@@ -78,7 +78,8 @@ impl<ACTION> OneTimeActionWithOwner<ACTION, UtilityContext>
 where
     ACTION: Serialize,
 {
-    pub unconstrained fn is_done(self, action: ACTION, owner_nsk_app: Field) -> bool {
+    pub unconstrained fn is_done(self, action: ACTION) -> bool {
+        let owner_nsk_app = get_nsk_app(get_public_keys(self.owner).npk_m.hash());
         check_nullifier_exists(self.compute_nullifier(action, owner_nsk_app))
     }
 }
