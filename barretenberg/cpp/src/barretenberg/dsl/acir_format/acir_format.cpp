@@ -20,10 +20,10 @@
 #include "barretenberg/stdlib/primitives/curves/secp256r1.hpp"
 #include "barretenberg/stdlib/primitives/field/field_conversion.hpp"
 #include "barretenberg/stdlib/primitives/pairing_points.hpp"
+#include "barretenberg/stdlib_circuit_builders/circuit_builder_base_utils.hpp"
 #include "barretenberg/stdlib_circuit_builders/mega_circuit_builder.hpp"
 #include "barretenberg/stdlib_circuit_builders/ultra_circuit_builder.hpp"
 #include "barretenberg/transcript/transcript.hpp"
-#include "barretenberg/stdlib_circuit_builders/circuit_builder_base_utils.hpp"
 
 #include <cstddef>
 #include <cstdint>
@@ -159,9 +159,13 @@ void build_constraints(Builder& builder, AcirProgram& program, const ProgramMeta
     // Add logic constraint
     for (const auto& [constraint, opcode_idx] :
          zip_view(constraint_system.logic_constraints, constraint_system.original_opcode_indices.logic_constraints)) {
+        const auto& before_constraints = bb::get_real_variable_indices_set(builder);
         create_logic_gate(
             builder, constraint.a, constraint.b, constraint.result, constraint.num_bits, constraint.is_xor_gate);
+        auto constraint_variables = bb::get_difference_real_variable_indices_states(before_constraints, builder);
+        builder.update_constraint_witnesses(constraint_variables);
         builder.save_and_clear_logic_witnesses();
+        builder.save_and_clear_tmp_marked_logic_witnesses();
         gate_counter.track_diff(constraint_system.gates_per_opcode,
                                 constraint_system.original_opcode_indices.logic_constraints.at(i));
     }
