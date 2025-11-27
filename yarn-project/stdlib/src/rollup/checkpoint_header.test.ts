@@ -37,7 +37,7 @@ describe('CheckpointHeader', () => {
       blockHeadersHash: new Fr(456),
       blobsHash: new Fr(77),
       inHash: new Fr(88),
-      outHash: new Fr(99),
+      outHashRoot: new Fr(99),
       slotNumber: new Fr(1234),
       timestamp: BigInt(5678),
       coinbase: EthAddress.fromField(new Fr(9090)),

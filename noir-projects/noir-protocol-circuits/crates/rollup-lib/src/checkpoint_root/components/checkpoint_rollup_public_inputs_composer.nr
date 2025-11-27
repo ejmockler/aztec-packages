@@ -8,17 +8,20 @@ use blob::{
 };
 use types::{
     abis::{
-        checkpoint_header::CheckpointHeader, epoch_constant_data::EpochConstantData,
-        fee_recipient::FeeRecipient,
+        append_only_tree_snapshot::AppendOnlyTreeSnapshot, checkpoint_header::CheckpointHeader,
+        epoch_constant_data::EpochConstantData, fee_recipient::FeeRecipient,
     },
     blob_data::SpongeBlob,
-    constants::{AZTEC_MAX_EPOCH_DURATION, FIELDS_PER_BLOB},
+    constants::{AZTEC_MAX_EPOCH_DURATION, FIELDS_PER_BLOB, OUT_HASH_TREE_HEIGHT},
+    merkle_tree::append_leaf_to_snapshot_sha,
     traits::{Empty, Hash},
     utils::arrays::assert_trailing_zeros,
 };
 
 pub struct CheckpointRollupPublicInputsComposer<let NumBlobs: u32> {
     merged_rollup: BlockRollupPublicInputs,
+    previous_out_hash: AppendOnlyTreeSnapshot,
+    new_out_hash_sibling_path: [Field; OUT_HASH_TREE_HEIGHT],
     start_blob_accumulator: BlobAccumulator,
     final_blob_challenges: FinalBlobBatchingChallenges,
     blobs_fields: [Field; FIELDS_PER_BLOB * NumBlobs],
@@ -29,6 +32,8 @@ pub struct CheckpointRollupPublicInputsComposer<let NumBlobs: u32> {
 impl<let NumBlobs: u32> CheckpointRollupPublicInputsComposer<NumBlobs> {
     pub fn new<let NumPreviousRollups: u32>(
         previous_rollups: [BlockRollupPublicInputs; NumPreviousRollups],
+        previous_out_hash: AppendOnlyTreeSnapshot,
+        new_out_hash_sibling_path: [Field; OUT_HASH_TREE_HEIGHT],
         start_blob_accumulator: BlobAccumulator,
         final_blob_challenges: FinalBlobBatchingChallenges,
         blobs_fields: [Field; NumBlobs * FIELDS_PER_BLOB],
@@ -42,6 +47,8 @@ impl<let NumBlobs: u32> CheckpointRollupPublicInputsComposer<NumBlobs> {
 
         Self {
             merged_rollup,
+            previous_out_hash,
+            new_out_hash_sibling_path,
             start_blob_accumulator,
             final_blob_challenges,
             blobs_fields,
@@ -61,11 +68,14 @@ impl<let NumBlobs: u32> CheckpointRollupPublicInputsComposer<NumBlobs> {
             prover_id: merged_rollup.constants.prover_id,
         };
 
-        let mut checkpoint_header_hashes = [0; AZTEC_MAX_EPOCH_DURATION];
-        checkpoint_header_hashes[0] = self.create_checkpoint_header().hash();
+        let new_out_hash = append_leaf_to_snapshot_sha::<OUT_HASH_TREE_HEIGHT>(
+            self.previous_out_hash,
+            self.new_out_hash_sibling_path,
+            merged_rollup.out_hash,
+        );
 
-        let mut out_hashes = [0; AZTEC_MAX_EPOCH_DURATION];
-        out_hashes[0] = merged_rollup.out_hash;
+        let mut checkpoint_header_hashes = [0; AZTEC_MAX_EPOCH_DURATION];
+        checkpoint_header_hashes[0] = self.create_checkpoint_header(new_out_hash.root).hash();
 
         let mut fees = [FeeRecipient::empty(); AZTEC_MAX_EPOCH_DURATION];
         fees[0] = FeeRecipient {
@@ -79,7 +89,8 @@ impl<let NumBlobs: u32> CheckpointRollupPublicInputsComposer<NumBlobs> {
             constants,
             previous_archive: merged_rollup.previous_archive,
             new_archive: merged_rollup.new_archive,
-            out_hashes,
+            previous_out_hash: self.previous_out_hash,
+            new_out_hash,
             checkpoint_header_hashes,
             fees,
             start_blob_accumulator: self.start_blob_accumulator,
@@ -88,7 +99,7 @@ impl<let NumBlobs: u32> CheckpointRollupPublicInputsComposer<NumBlobs> {
         }
     }
 
-    fn create_checkpoint_header(self) -> CheckpointHeader {
+    fn create_checkpoint_header(self, out_hash_tree_root: Field) -> CheckpointHeader {
         let merged_rollup = self.merged_rollup;
         let constants = merged_rollup.constants;
 
@@ -97,7 +108,7 @@ impl<let NumBlobs: u32> CheckpointRollupPublicInputsComposer<NumBlobs> {
             block_headers_hash: merged_rollup.block_headers_hash,
             blobs_hash: self.blobs_hash,
             in_hash: merged_rollup.in_hash,
-            out_hash: merged_rollup.out_hash,
+            out_hash: out_hash_tree_root,
             slot_number: constants.slot_number,
             timestamp: merged_rollup.end_timestamp,
             coinbase: constants.coinbase,

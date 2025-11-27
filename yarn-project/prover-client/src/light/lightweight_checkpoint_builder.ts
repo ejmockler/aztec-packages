@@ -6,7 +6,11 @@ import { createLogger } from '@aztec/foundation/log';
 import { L2BlockNew } from '@aztec/stdlib/block';
 import { Checkpoint } from '@aztec/stdlib/checkpoint';
 import type { MerkleTreeWriteOperations } from '@aztec/stdlib/interfaces/server';
-import { computeCheckpointOutHash, computeInHashFromL1ToL2Messages } from '@aztec/stdlib/messaging';
+import {
+  computeCheckpointOutHash,
+  computeEpochOutHashFromCheckpointOutHashes,
+  computeInHashFromL1ToL2Messages,
+} from '@aztec/stdlib/messaging';
 import { CheckpointConstantData, CheckpointHeader, computeBlockHeadersHash } from '@aztec/stdlib/rollup';
 import { AppendOnlyTreeSnapshot, MerkleTreeId } from '@aztec/stdlib/trees';
 import { type GlobalVariables, type ProcessedTx, StateReference } from '@aztec/stdlib/tx';
@@ -34,6 +38,7 @@ export class LightweightCheckpointBuilder {
   constructor(
     private constants: CheckpointConstantData,
     private l1ToL2Messages: Fr[],
+    private previousCheckpointOutHashes: Fr[],
     private db: MerkleTreeWriteOperations,
   ) {
     this.spongeBlob = SpongeBlob.init();
@@ -43,6 +48,7 @@ export class LightweightCheckpointBuilder {
   static async startNewCheckpoint(
     constants: CheckpointConstantData,
     l1ToL2Messages: Fr[],
+    previousCheckpointOutHashes: Fr[],
     db: MerkleTreeWriteOperations,
   ): Promise<LightweightCheckpointBuilder> {
     // Insert l1-to-l2 messages into the tree.
@@ -51,7 +57,7 @@ export class LightweightCheckpointBuilder {
       padArrayEnd<Fr, number>(l1ToL2Messages, Fr.ZERO, NUMBER_OF_L1_L2_MESSAGES_PER_ROLLUP),
     );
 
-    return new LightweightCheckpointBuilder(constants, l1ToL2Messages, db);
+    return new LightweightCheckpointBuilder(constants, l1ToL2Messages, previousCheckpointOutHashes, db);
   }
 
   async addBlock(globalVariables: GlobalVariables, endState: StateReference, txs: ProcessedTx[]): Promise<L2BlockNew> {
@@ -96,7 +102,7 @@ export class LightweightCheckpointBuilder {
     return block;
   }
 
-  async completeCheckpoint(): Promise<Checkpoint> {
+  async completeCheckpoint(): Promise<{ checkpoint: Checkpoint; outHash: Fr }> {
     if (!this.blocks.length) {
       throw new Error('No blocks added to checkpoint.');
     }
@@ -116,6 +122,8 @@ export class LightweightCheckpointBuilder {
     const inHash = computeInHashFromL1ToL2Messages(this.l1ToL2Messages);
 
     const outHash = computeCheckpointOutHash(blocks.map(block => block.body.txEffects.map(tx => tx.l2ToL1Msgs)));
+    const checkpointOutHashes = [...this.previousCheckpointOutHashes, outHash];
+    const outHashRoot = computeEpochOutHashFromCheckpointOutHashes(checkpointOutHashes);
 
     const constants = this.constants!;
 
@@ -129,7 +137,7 @@ export class LightweightCheckpointBuilder {
       blockHeadersHash,
       blobsHash,
       inHash,
-      outHash,
+      outHashRoot,
       slotNumber: constants.slotNumber,
       timestamp,
       coinbase: constants.coinbase,
@@ -138,6 +146,6 @@ export class LightweightCheckpointBuilder {
       totalManaUsed,
     });
 
-    return new Checkpoint(newArchive, header, blocks);
+    return { checkpoint: new Checkpoint(newArchive, header, blocks), outHash };
   }
 }

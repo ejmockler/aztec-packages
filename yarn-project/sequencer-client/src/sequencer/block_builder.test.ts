@@ -157,7 +157,7 @@ describe('BlockBuilder', () => {
     const tx = await makeTx();
     const iterator = mockTxIterator([tx]);
 
-    const blockResult = await blockBuilder.buildBlock(iterator, [], globalVariables, {});
+    const blockResult = await blockBuilder.buildBlock(iterator, [], [], globalVariables, {});
     expect(publicProcessor.process).toHaveBeenCalledTimes(1);
     expect(publicProcessor.process).toHaveBeenCalledWith(iterator, {}, validator);
     logger.info('Built Block', blockResult.block);
@@ -175,7 +175,7 @@ describe('BlockBuilder', () => {
   it('builds a block with the correct options', async () => {
     const txs = await timesParallel(5, i => makeTx(i * 0x10000));
     const deadline = new Date(Date.now() + 1000);
-    await blockBuilder.buildBlock(txs, [], globalVariables, {
+    await blockBuilder.buildBlock(txs, [], [], globalVariables, {
       maxTransactions: 4,
       deadline,
     });
@@ -192,7 +192,7 @@ describe('BlockBuilder', () => {
 
   it('builds a block for validation ignoring limits', async () => {
     const txs = await timesParallel(5, i => makeTx(i * 0x10000));
-    await blockBuilder.buildBlock(txs, [], globalVariables, {});
+    await blockBuilder.buildBlock(txs, [], [], globalVariables, {});
 
     expect(publicProcessor.process).toHaveBeenCalledWith(txs, {}, validator);
   });
@@ -228,7 +228,7 @@ describe('BlockBuilder', () => {
       return [processedTxs, failedTxs, usedTxs, []] as any;
     });
 
-    const blockResult = await blockBuilder.buildBlock(txs, [], globalVariables, {});
+    const blockResult = await blockBuilder.buildBlock(txs, [], [], globalVariables, {});
     expect(blockResult.failedTxs).toEqual([{ tx: invalidTx, error: new Error() }]);
     expect(blockResult.usedTxs).toEqual(validTxs);
   });

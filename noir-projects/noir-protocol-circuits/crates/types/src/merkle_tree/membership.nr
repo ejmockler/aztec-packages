@@ -1,7 +1,8 @@
 use crate::{
     merkle_tree::{
         indexed_tree::check_valid_low_leaf::assert_check_valid_low_leaf,
-        leaf_preimage::IndexedTreeLeafPreimage, root::root_from_sibling_path,
+        leaf_preimage::IndexedTreeLeafPreimage,
+        root::{root_from_sibling_path, root_from_sibling_path_with_hasher},
     },
     traits::Empty,
 };
@@ -25,6 +26,17 @@ pub fn check_membership<let N: u32>(
     root: Field,
 ) -> bool {
     let calculated_root = root_from_sibling_path(leaf, index, sibling_path);
+    calculated_root == root
+}
+
+pub fn check_membership_with_hasher<let N: u32>(
+    leaf: Field,
+    index: Field,
+    sibling_path: [Field; N],
+    root: Field,
+    hasher: fn(Field, Field) -> Field,
+) -> bool {
+    let calculated_root = root_from_sibling_path_with_hasher(leaf, index, sibling_path, hasher);
     calculated_root == root
 }
 

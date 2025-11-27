@@ -1,6 +1,7 @@
 mod blob_tests;
 mod child_proof_vk_tests;
 mod consecutive_rollups_tests;
+mod out_hash_tests;
 mod rollup_structure_tests;
 mod start_states_tests;
 
@@ -27,7 +28,9 @@ use types::{
         BLOCK_MERGE_ROLLUP_VK_INDEX, BLOCK_ROOT_EMPTY_TX_FIRST_ROLLUP_VK_INDEX,
         BLOCK_ROOT_FIRST_ROLLUP_VK_INDEX, BLOCK_ROOT_ROLLUP_VK_INDEX,
         BLOCK_ROOT_SINGLE_TX_FIRST_ROLLUP_VK_INDEX, BLOCK_ROOT_SINGLE_TX_ROLLUP_VK_INDEX,
+        OUT_HASH_TREE_LEAF_COUNT,
     },
+    merkle_tree::compute_sha_tree_root,
     tests::utils::{assert_array_eq, make_fixture, pad_end},
     traits::{Hash, Serialize},
 };
@@ -77,9 +80,18 @@ impl TestBuilder {
             BLOCK_ROOT_ROLLUP_VK_INDEX,
             1,
             blob_fields,
-            // Make this the only checkpoint in the epoch, so that we can test the end blob accumulator against the
-            // final blob challenges.
             1,
+            false,
+        )
+    }
+
+    pub fn default_at_index(checkpoint_index: u32) -> Self {
+        Self::new_with_random_blob_fields(
+            BLOCK_MERGE_ROLLUP_VK_INDEX,
+            2,
+            BLOCK_ROOT_ROLLUP_VK_INDEX,
+            1,
+            checkpoint_index,
             false,
         )
     }
@@ -90,28 +102,37 @@ impl TestBuilder {
         right_rollup_vk_index: u32,
         num_right_blocks: u32,
     ) -> Self {
-        let blob_fields_without_end_marker: [Field; 14] = [14].concat(make_fixture(25339));
-        Self::new_with_blob_fields(
+        Self::new_with_random_blob_fields(
             left_rollup_vk_index,
             num_left_blocks,
             right_rollup_vk_index,
             num_right_blocks,
-            blob_fields_without_end_marker.concat([create_checkpoint_end_marker(15)]),
             2,
             false,
         )
     }
 
     pub fn new_single_block(vk_index: u32) -> Self {
-        let blob_fields_without_end_marker: [Field; 8] = make_fixture(89243);
+        Self::new_with_random_blob_fields(vk_index, 1, 0, 0, 1, true)
+    }
+
+    fn new_with_random_blob_fields(
+        left_rollup_vk_index: u32,
+        num_left_blocks: u32,
+        right_rollup_vk_index: u32,
+        num_right_blocks: u32,
+        checkpoint_index: u32,
+        is_single_block: bool,
+    ) -> Self {
+        let blob_fields_without_end_marker: [Field; 11] = make_fixture(89243);
         Self::new_with_blob_fields(
-            vk_index,
-            1,
-            0,
-            0,
-            blob_fields_without_end_marker.concat([create_checkpoint_end_marker(9)]),
-            1,
-            true,
+            left_rollup_vk_index,
+            num_left_blocks,
+            right_rollup_vk_index,
+            num_right_blocks,
+            blob_fields_without_end_marker.concat([create_checkpoint_end_marker(12)]),
+            checkpoint_index,
+            is_single_block,
         )
     }
 
@@ -121,7 +142,7 @@ impl TestBuilder {
         right_rollup_vk_index: u32,
         num_right_blocks: u32,
         blob_fields: [Field; BlobFieldsLen],
-        num_checkpoints: u32,
+        checkpoint_index: u32,
         is_single_block: bool,
     ) -> Self {
         Self::validate_input_vk_index(left_rollup_vk_index, num_left_blocks);
@@ -132,8 +153,8 @@ impl TestBuilder {
         let mut fixture_builder = RollupFixtureBuilder::new();
         let start_block_number = fixture_builder.start_block_number;
 
-        let slot_number = fixture_builder.start_slot_number;
-        fixture_builder.end_slot_number = slot_number + num_checkpoints as Field - 1;
+        let slot_number = fixture_builder.start_slot_number + checkpoint_index as Field;
+        fixture_builder.end_slot_number = slot_number + 1;
 
         if !is_first_block(left_rollup_vk_index)
             & (left_rollup_vk_index != BLOCK_MERGE_ROLLUP_VK_INDEX) {
@@ -162,6 +183,9 @@ impl TestBuilder {
 
         left_rollup.previous_archive = previous_archive;
 
+        let (previous_out_hash, new_out_hash_sibling_path) =
+            fixture_builder.build_out_hash_tree_for_insertion(slot_number);
+
         let start_sponge_blob = SpongeBlob::init();
         left_rollup.start_sponge_blob = start_sponge_blob;
 
@@ -176,6 +200,8 @@ impl TestBuilder {
         let hints = CheckpointRootRollupHints {
             previous_block_header: fixture_builder.get_block_header(previous_block_number),
             previous_archive_sibling_path,
+            previous_out_hash,
+            new_out_hash_sibling_path,
             start_blob_accumulator: fixture_builder.get_blob_accumulator(slot_number - 1),
             final_blob_challenges: fixture_builder.get_final_blob_challenges(),
             blobs_fields: pad_end(blob_fields),
@@ -258,7 +284,7 @@ impl TestBuilder {
         self,
     ) -> (CheckpointRollupPublicInputs, OracleMock) {
         let end_blob_accumulator_mock =
-            self.fixture_builder.get_blob_accumulator(self.fixture_builder.start_slot_number);
+            self.fixture_builder.get_blob_accumulator(self.fixture_builder.end_slot_number);
 
         let evaluate_blobs_and_batch_mock =
             OracleMock::mock("evaluateBlobs").returns(end_blob_accumulator_mock.serialize());
@@ -280,17 +306,26 @@ impl TestBuilder {
             accumulate_block_headers_hash(left.block_headers_hash, right.block_headers_hash)
         };
 
-        let out_hash = if self.is_single_block {
-            left.out_hash
-        } else {
-            accumulate_out_hash(left.out_hash, right.out_hash)
-        };
-
         let total_mana_used = if self.is_single_block {
             left.accumulated_mana_used
         } else {
             left.accumulated_mana_used + right.accumulated_mana_used
         };
+
+        let out_hash = if self.is_single_block {
+            left.out_hash
+        } else {
+            accumulate_out_hash(left.out_hash, right.out_hash)
+        };
+        let mut out_hashes = [0; OUT_HASH_TREE_LEAF_COUNT];
+        let checkpoint_index = self.hints.previous_out_hash.next_available_leaf_index as u32;
+        for i in 0..checkpoint_index {
+            out_hashes[i] = self.fixture_builder.get_out_hash(
+                i + self.fixture_builder.start_slot_number as u32,
+            );
+        }
+        out_hashes[checkpoint_index] = out_hash;
+        let out_hash = compute_sha_tree_root(out_hashes);
 
         CheckpointHeader {
             last_archive_root: left.previous_archive.root,
@@ -338,12 +373,11 @@ impl TestBuilder {
             [expected_checkpoint_header.hash()],
         );
 
-        let out_hash = if self.is_single_block {
-            left.out_hash
-        } else {
-            accumulate_out_hash(left.out_hash, right.out_hash)
-        };
-        assert_array_eq(pi.out_hashes, [out_hash]);
+        assert_eq(pi.new_out_hash.root, expected_checkpoint_header.out_hash);
+        assert_eq(
+            pi.new_out_hash.next_available_leaf_index,
+            self.hints.previous_out_hash.next_available_leaf_index + 1,
+        );
 
         let total_fees = if self.is_single_block {
             left.accumulated_fees

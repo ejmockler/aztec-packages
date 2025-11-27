@@ -1,5 +1,6 @@
 import { EpochCache } from '@aztec/epoch-cache';
 import { merge, pick } from '@aztec/foundation/collection';
+import type { Fr } from '@aztec/foundation/fields';
 import { type Logger, createLogger } from '@aztec/foundation/log';
 import {
   EthAddress,
@@ -15,7 +16,7 @@ import type {
   MerkleTreeWriteOperations,
   SlasherConfig,
 } from '@aztec/stdlib/interfaces/server';
-import type { L1ToL2MessageSource } from '@aztec/stdlib/messaging';
+import { type L1ToL2MessageSource, computeCheckpointOutHash } from '@aztec/stdlib/messaging';
 import { OffenseType, getOffenseTypeName } from '@aztec/stdlib/slashing';
 import {
   ReExFailedTxsError,
@@ -118,21 +119,31 @@ export class EpochPruneWatcher extends (EventEmitter as new () => WatcherEmitter
     }
   }
 
-  public async validateBlocks(blocks: L2Block[]): Promise<void> {
+  private async validateBlocks(blocks: L2Block[]): Promise<void> {
     if (blocks.length === 0) {
       return;
     }
+
+    let previousCheckpointOutHashes: Fr[] = [];
     const fork = await this.blockBuilder.getFork(blocks[0].header.globalVariables.blockNumber - 1);
     try {
       for (const block of blocks) {
-        await this.validateBlock(block, fork);
+        await this.validateBlock(block, previousCheckpointOutHashes, fork);
+        previousCheckpointOutHashes = [
+          ...previousCheckpointOutHashes,
+          computeCheckpointOutHash([block.body.txEffects.map(tx => tx.l2ToL1Msgs)]),
+        ];
       }
     } finally {
       await fork.close();
     }
   }
 
-  public async validateBlock(blockFromL1: L2Block, fork: MerkleTreeWriteOperations): Promise<void> {
+  private async validateBlock(
+    blockFromL1: L2Block,
+    previousCheckpointOutHashes: Fr[],
+    fork: MerkleTreeWriteOperations,
+  ): Promise<void> {
     this.log.debug(`Validating pruned block ${blockFromL1.header.globalVariables.blockNumber}`);
     const txHashes = blockFromL1.body.txEffects.map(txEffect => txEffect.txHash);
     // We load txs from the mempool directly, since the TxCollector running in the background has already been
@@ -145,9 +156,11 @@ export class EpochPruneWatcher extends (EventEmitter as new () => WatcherEmitter
     }
 
     const l1ToL2Messages = await this.l1ToL2MessageSource.getL1ToL2Messages(blockFromL1.number);
+
     const { block, failedTxs, numTxs } = await this.blockBuilder.buildBlock(
       txs,
       l1ToL2Messages,
+      previousCheckpointOutHashes,
       blockFromL1.header.globalVariables,
       {},
       fork,

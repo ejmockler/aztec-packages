@@ -1,13 +1,19 @@
 import { BatchedBlob, BatchedBlobAccumulator, type FinalBlobBatchingChallenges } from '@aztec/blob-lib';
-import type {
-  ARCHIVE_HEIGHT,
-  L1_TO_L2_MSG_SUBTREE_ROOT_SIBLING_PATH_LENGTH,
-  NESTED_RECURSIVE_PROOF_LENGTH,
-  NESTED_RECURSIVE_ROLLUP_HONK_PROOF_LENGTH,
+import {
+  type ARCHIVE_HEIGHT,
+  type L1_TO_L2_MSG_SUBTREE_ROOT_SIBLING_PATH_LENGTH,
+  type NESTED_RECURSIVE_PROOF_LENGTH,
+  type NESTED_RECURSIVE_ROLLUP_HONK_PROOF_LENGTH,
+  OUT_HASH_TREE_HEIGHT,
 } from '@aztec/constants';
-import type { Fr } from '@aztec/foundation/fields';
+import { Fr } from '@aztec/foundation/fields';
 import type { Tuple } from '@aztec/foundation/serialize';
-import { type TreeNodeLocation, UnbalancedTreeStore } from '@aztec/foundation/trees';
+import {
+  MerkleTreeCalculator,
+  type TreeNodeLocation,
+  UnbalancedTreeStore,
+  shaMerkleHash,
+} from '@aztec/foundation/trees';
 import type { PublicInputsAndRecursiveProof } from '@aztec/stdlib/interfaces/server';
 import type { Proof } from '@aztec/stdlib/proofs';
 import {
@@ -19,7 +25,7 @@ import {
   RootRollupPrivateInputs,
   type RootRollupPublicInputs,
 } from '@aztec/stdlib/rollup';
-import type { AppendOnlyTreeSnapshot, MerkleTreeId } from '@aztec/stdlib/trees';
+import { AppendOnlyTreeSnapshot, type MerkleTreeId } from '@aztec/stdlib/trees';
 import type { BlockHeader } from '@aztec/stdlib/tx';
 
 import { toProofData } from './block-building-helpers.js';
@@ -206,6 +212,48 @@ export class EpochProvingState {
     >,
   ) {
     this.checkpointPaddingProof = { provingOutput };
+  }
+
+  public async accumulateCheckpointOutHashes() {
+    const treeCalculator = await MerkleTreeCalculator.create(OUT_HASH_TREE_HEIGHT, undefined, (left, right) =>
+      Promise.resolve(shaMerkleHash(left, right)),
+    );
+
+    const computeHints = async (leaves: Fr[]) => {
+      const tree = await treeCalculator.computeTree(leaves.map(l => l.toBuffer()));
+      const nextAvailableLeafIndex = leaves.length;
+      return {
+        treeSnapshot: new AppendOnlyTreeSnapshot(Fr.fromBuffer(tree.root), nextAvailableLeafIndex),
+        siblingPath: tree.getSiblingPath(nextAvailableLeafIndex).map(Fr.fromBuffer) as Tuple<
+          Fr,
+          typeof OUT_HASH_TREE_HEIGHT
+        >,
+      };
+    };
+
+    let hints = this.checkpoints[0]?.getOutHashHints();
+    const outHashes = [];
+    for (let i = 0; i < this.totalNumCheckpoints; i++) {
+      const checkpoint = this.checkpoints[i];
+      if (!checkpoint) {
+        break;
+      }
+
+      // If hints are not set yet, it must be the first checkpoint. Compute the hints with an empty tree.
+      hints ??= await computeHints([]);
+      checkpoint.setOutHashHints(hints);
+
+      // Get the out hash for this checkpoint.
+      const outHash = checkpoint.accumulateBlockOutHashes();
+      if (!outHash) {
+        break;
+      }
+      outHashes.push(outHash);
+
+      // Get or create hints for the next checkpoint.
+      hints = checkpoint.getOutHashHintsForNextCheckpoint() ?? (await computeHints(outHashes));
+      checkpoint.setOutHashHintsForNextCheckpoint(hints);
+    }
   }
 
   public async setBlobAccumulators() {

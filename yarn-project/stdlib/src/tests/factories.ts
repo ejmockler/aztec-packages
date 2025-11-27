@@ -824,13 +824,14 @@ export function makeBlockRollupPublicInputs(seed = 0): BlockRollupPublicInputs {
 }
 
 export function makeCheckpointRollupPublicInputs(seed = 0) {
-  const startBlobAccumulator = makeBatchedBlobAccumulator(seed);
+  const startBlobAccumulator = makeBatchedBlobAccumulator(seed + 0x900);
   return new CheckpointRollupPublicInputs(
     makeEpochConstantData(seed),
     makeAppendOnlyTreeSnapshot(seed + 0x100),
     makeAppendOnlyTreeSnapshot(seed + 0x200),
-    makeTuple(AZTEC_MAX_EPOCH_DURATION, () => fr(seed), 0x300),
-    makeTuple(AZTEC_MAX_EPOCH_DURATION, () => fr(seed), 0x400),
+    makeAppendOnlyTreeSnapshot(seed + 0x300),
+    makeAppendOnlyTreeSnapshot(seed + 0x400),
+    makeTuple(AZTEC_MAX_EPOCH_DURATION, () => fr(seed), 0x500),
     makeTuple(AZTEC_MAX_EPOCH_DURATION, () => makeFeeRecipient(seed), 0x700),
     startBlobAccumulator.toBlobAccumulator(),
     makeBatchedBlobAccumulator(seed + 1).toBlobAccumulator(),
@@ -907,7 +908,7 @@ export function makeL2BlockHeader(
     makeAppendOnlyTreeSnapshot(seed + 0x100),
     overrides?.blobsHash ?? fr(seed + 0x200),
     overrides?.inHash ?? fr(seed + 0x300),
-    overrides?.outHash ?? fr(seed + 0x400),
+    overrides?.outHashRoot ?? fr(seed + 0x400),
     overrides?.state ?? makeStateReference(seed + 0x600),
     makeGlobalVariables((seed += 0x700), {
       ...(blockNumber ? { blockNumber } : {}),
@@ -926,7 +927,7 @@ export function makeCheckpointHeader(seed = 0) {
     blockHeadersHash: fr(seed + 0x150),
     blobsHash: fr(seed + 0x200),
     inHash: fr(seed + 0x300),
-    outHash: fr(seed + 0x350),
+    outHashRoot: fr(seed + 0x350),
     slotNumber: new Fr(seed + 0x400),
     timestamp: BigInt(seed + 0x500),
     coinbase: makeEthAddress(seed + 0x600),

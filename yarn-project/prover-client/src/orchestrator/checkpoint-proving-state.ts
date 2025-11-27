@@ -11,12 +11,14 @@ import {
   type L1_TO_L2_MSG_SUBTREE_ROOT_SIBLING_PATH_LENGTH,
   type NESTED_RECURSIVE_ROLLUP_HONK_PROOF_LENGTH,
   NUM_MSGS_PER_BASE_PARITY,
+  OUT_HASH_TREE_HEIGHT,
 } from '@aztec/constants';
 import { padArrayEnd } from '@aztec/foundation/collection';
 import { BLS12Point, Fr } from '@aztec/foundation/fields';
 import type { Tuple } from '@aztec/foundation/serialize';
 import { type TreeNodeLocation, UnbalancedTreeStore } from '@aztec/foundation/trees';
 import type { PublicInputsAndRecursiveProof } from '@aztec/stdlib/interfaces/server';
+import { computeCheckpointOutHash } from '@aztec/stdlib/messaging';
 import { ParityBasePrivateInputs } from '@aztec/stdlib/parity';
 import {
   BlockMergeRollupPrivateInputs,
@@ -36,6 +38,11 @@ import { accumulateBlobs, buildBlobHints, toProofData } from './block-building-h
 import { BlockProvingState, type ProofState } from './block-proving-state.js';
 import type { EpochProvingState } from './epoch-proving-state.js';
 
+type OutHashHints = {
+  treeSnapshot: AppendOnlyTreeSnapshot;
+  siblingPath: Tuple<Fr, typeof OUT_HASH_TREE_HEIGHT>;
+};
+
 export class CheckpointProvingState {
   private blockProofs: UnbalancedTreeStore<
     ProofState<BlockRollupPublicInputs, typeof NESTED_RECURSIVE_ROLLUP_HONK_PROOF_LENGTH>
@@ -44,6 +51,11 @@ export class CheckpointProvingState {
     | ProofState<CheckpointRollupPublicInputs, typeof NESTED_RECURSIVE_ROLLUP_HONK_PROOF_LENGTH>
     | undefined;
   private blocks: (BlockProvingState | undefined)[] = [];
+  private previousOutHashHints: OutHashHints | undefined;
+  private outHash: Fr | undefined;
+  // The snapshot and sibling path after the checkpoint's out hash is inserted.
+  // Stored here to be retrieved for the next checkpoint when it's added.
+  private newOutHashHints: OutHashHints | undefined;
   private startBlobAccumulator: BatchedBlobAccumulator | undefined;
   private endBlobAccumulator: BatchedBlobAccumulator | undefined;
   private blobFields: Fr[] | undefined;
@@ -193,6 +205,35 @@ export class CheckpointProvingState {
     return new ParityBasePrivateInputs(messages, this.constants.vkTreeRoot);
   }
 
+  public setOutHashHints(hints: OutHashHints) {
+    this.previousOutHashHints = hints;
+  }
+
+  public getOutHashHints() {
+    return this.previousOutHashHints;
+  }
+
+  public accumulateBlockOutHashes() {
+    if (this.isAcceptingBlocks() || this.blocks.some(b => !b?.hasEndState())) {
+      return;
+    }
+
+    if (!this.outHash) {
+      const messagesPerBlock = this.blocks.map(b => b!.getTxEffects().map(tx => tx.l2ToL1Msgs));
+      this.outHash = computeCheckpointOutHash(messagesPerBlock);
+    }
+
+    return this.outHash;
+  }
+
+  public setOutHashHintsForNextCheckpoint(hints: OutHashHints) {
+    this.newOutHashHints = hints;
+  }
+
+  public getOutHashHintsForNextCheckpoint() {
+    return this.newOutHashHints;
+  }
+
   public async accumulateBlobs(startBlobAccumulator: BatchedBlobAccumulator) {
     if (this.isAcceptingBlocks() || this.blocks.some(b => !b?.hasEndState())) {
       return;
@@ -234,6 +275,9 @@ export class CheckpointProvingState {
     if (proofs.length !== nonEmptyProofs.length) {
       throw new Error('At least one child is not ready for the checkpoint root rollup.');
     }
+    if (!this.previousOutHashHints) {
+      throw new Error('Out hash hints are not set.');
+    }
     if (!this.startBlobAccumulator) {
       throw new Error('Start blob accumulator is not set.');
     }
@@ -246,6 +290,8 @@ export class CheckpointProvingState {
     const hints = CheckpointRootRollupHints.from({
       previousBlockHeader: this.headerOfLastBlockInPreviousCheckpoint,
       previousArchiveSiblingPath: this.lastArchiveSiblingPath,
+      previousOutHash: this.previousOutHashHints.treeSnapshot,
+      newOutHashSiblingPath: this.previousOutHashHints.siblingPath,
       startBlobAccumulator: this.startBlobAccumulator.toBlobAccumulator(),
       finalBlobChallenges: this.finalBlobBatchingChallenges,
       blobFields: padArrayEnd(blobFields, Fr.ZERO, FIELDS_PER_BLOB * BLOBS_PER_CHECKPOINT),
@@ -271,7 +317,7 @@ export class CheckpointProvingState {
 
   public isReadyForCheckpointRoot() {
     const allChildProofsReady = this.#getChildProofsForRoot().every(p => !!p);
-    return allChildProofsReady && !!this.startBlobAccumulator;
+    return allChildProofsReady && !!this.previousOutHashHints && !!this.startBlobAccumulator;
   }
 
   public verifyState() {

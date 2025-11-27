@@ -1,4 +1,5 @@
 import { INITIAL_L2_BLOCK_NUM } from '@aztec/constants';
+import type { EpochCache } from '@aztec/epoch-cache';
 import { TimeoutError } from '@aztec/foundation/error';
 import { Fr } from '@aztec/foundation/fields';
 import { createLogger } from '@aztec/foundation/log';
@@ -8,9 +9,14 @@ import type { P2P, PeerId } from '@aztec/p2p';
 import { TxProvider } from '@aztec/p2p';
 import { BlockProposalValidator } from '@aztec/p2p/msg_validators';
 import type { L2Block, L2BlockSource } from '@aztec/stdlib/block';
-import { getTimestampForSlot } from '@aztec/stdlib/epoch-helpers';
+import { getEpochAtSlot, getTimestampForSlot } from '@aztec/stdlib/epoch-helpers';
 import type { IFullNodeBlockBuilder, ValidatorClientFullConfig } from '@aztec/stdlib/interfaces/server';
-import { type L1ToL2MessageSource, computeInHashFromL1ToL2Messages } from '@aztec/stdlib/messaging';
+import {
+  type L1ToL2MessageSource,
+  computeCheckpointOutHash,
+  computeEpochOutHashFromCheckpointOutHashes,
+  computeInHashFromL1ToL2Messages,
+} from '@aztec/stdlib/messaging';
 import { type BlockProposal, ConsensusPayload } from '@aztec/stdlib/p2p';
 import { BlockHeader, type FailedTx, GlobalVariables, type Tx } from '@aztec/stdlib/tx';
 import {
@@ -28,6 +34,7 @@ export type BlockProposalValidationFailureReason =
   | 'parent_block_not_found'
   | 'parent_block_wrong_slot'
   | 'in_hash_mismatch'
+  | 'out_hash_mismatch'
   | 'block_number_already_exists'
   | 'txs_not_available'
   | 'state_mismatch'
@@ -66,6 +73,7 @@ export class BlockProposalHandler {
     private l1ToL2MessageSource: L1ToL2MessageSource,
     private txProvider: TxProvider,
     private blockProposalValidator: BlockProposalValidator,
+    private epochCache: EpochCache,
     private config: ValidatorClientFullConfig,
     private metrics?: ValidatorMetrics,
     private dateProvider: DateProvider = new DateProvider(),
@@ -190,13 +198,43 @@ export class BlockProposalHandler {
     // Try re-executing the transactions in the proposal if needed
     let reexecutionResult;
     if (shouldReexecute) {
+      // Compute the previous checkpoint out hashes for the epoch.
+      const epoch = getEpochAtSlot(slotNumber, this.epochCache.getL1Constants());
+      const previousBlocks = (await this.blockSource.getBlocksForEpoch(epoch))
+        .filter(b => b.number < blockNumber)
+        .sort((a, b) => a.number - b.number);
+      const previousCheckpointOutHashes = previousBlocks.map(b =>
+        computeCheckpointOutHash([b.body.txEffects.map(tx => tx.l2ToL1Msgs)]),
+      );
+
       try {
         this.log.verbose(`Re-executing transactions in the proposal`, proposalInfo);
-        reexecutionResult = await this.reexecuteTransactions(proposal, blockNumber, txs, l1ToL2Messages);
+        reexecutionResult = await this.reexecuteTransactions(
+          proposal,
+          blockNumber,
+          txs,
+          l1ToL2Messages,
+          previousCheckpointOutHashes,
+        );
       } catch (error) {
         this.log.error(`Error reexecuting txs while processing block proposal`, error, proposalInfo);
         const reason = this.getReexecuteFailureReason(error);
         return { isValid: false, blockNumber, reason, reexecutionResult };
+      }
+
+      // Check that the out hash root matches the value in the proposal.
+      const currentOutHash = computeCheckpointOutHash([
+        reexecutionResult.block.body.txEffects.map(tx => tx.l2ToL1Msgs),
+      ]);
+      const outHashRoot = computeEpochOutHashFromCheckpointOutHashes([...previousCheckpointOutHashes, currentOutHash]);
+      const proposalOutHashRoot = proposal.payload.header.outHashRoot;
+      if (!outHashRoot.equals(proposalOutHashRoot)) {
+        this.log.warn(`Out hash root mismatch`, {
+          proposalOutHashRoot: proposalOutHashRoot.toString(),
+          outHashRoot: outHashRoot.toString(),
+          ...proposalInfo,
+        });
+        return { isValid: false, blockNumber, reason: 'out_hash_mismatch' };
       }
     }
 
@@ -264,6 +302,7 @@ export class BlockProposalHandler {
     blockNumber: number,
     txs: Tx[],
     l1ToL2Messages: Fr[],
+    previousCheckpointOutHashes: Fr[],
   ): Promise<ReexecuteTransactionsResult> {
     const { header } = proposal.payload;
     const { txHashes } = proposal;
@@ -291,9 +330,15 @@ export class BlockProposalHandler {
       version: new Fr(config.rollupVersion),
     });
 
-    const { block, failedTxs } = await this.blockBuilder.buildBlock(txs, l1ToL2Messages, globalVariables, {
-      deadline: this.getReexecutionDeadline(proposal.payload.header.slotNumber.toBigInt(), config),
-    });
+    const { block, failedTxs } = await this.blockBuilder.buildBlock(
+      txs,
+      l1ToL2Messages,
+      previousCheckpointOutHashes,
+      globalVariables,
+      {
+        deadline: this.getReexecutionDeadline(proposal.payload.header.slotNumber.toBigInt(), config),
+      },
+    );
 
     const numFailedTxs = failedTxs.length;
     const slot = proposal.slotNumber.toBigInt();

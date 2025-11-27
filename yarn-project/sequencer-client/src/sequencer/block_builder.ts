@@ -36,6 +36,7 @@ const log = createLogger('block-builder');
 export async function buildBlock(
   pendingTxs: Iterable<Tx> | AsyncIterable<Tx>,
   l1ToL2Messages: Fr[],
+  previousCheckpointOutHashes: Fr[],
   newGlobalVariables: GlobalVariables,
   opts: PublicProcessorLimits = {},
   worldStateFork: MerkleTreeWriteOperations,
@@ -62,7 +63,7 @@ export async function buildBlock(
     initialArchiveRoot: bufferToHex(archiveTree.root),
     opts,
   });
-  const blockFactory = new LightweightBlockFactory(worldStateFork, telemetryClient);
+  const blockFactory = new LightweightBlockFactory(previousCheckpointOutHashes, worldStateFork, telemetryClient);
   await blockFactory.startNewBlock(newGlobalVariables, l1ToL2Messages);
 
   const [publicProcessorDuration, [processedTxs, failedTxs, usedTxs]] = await elapsed(() =>
@@ -173,6 +174,7 @@ export class FullNodeBlockBuilder implements IFullNodeBlockBuilder {
   async buildBlock(
     pendingTxs: Iterable<Tx> | AsyncIterable<Tx>,
     l1ToL2Messages: Fr[],
+    previousCheckpointOutHashes: Fr[],
     globalVariables: GlobalVariables,
     opts: PublicProcessorLimits,
     suppliedFork?: MerkleTreeWriteOperations,
@@ -187,6 +189,7 @@ export class FullNodeBlockBuilder implements IFullNodeBlockBuilder {
       const res = await buildBlock(
         pendingTxs,
         l1ToL2Messages,
+        previousCheckpointOutHashes,
         globalVariables,
         opts,
         fork,

@@ -593,10 +593,12 @@ contract BenchmarkRollupTest is FeeModelTestPoints, DecoderBase {
           fees[feeIndex * 2 + 1] = bytes32(fee);
         }
 
+        CheckpointLog memory endCheckpointLog = rollup.getCheckpoint(start + epochSize - 1);
+
         PublicInputArgs memory args = PublicInputArgs({
           previousArchive: rollup.getCheckpoint(start).archive,
-          endArchive: rollup.getCheckpoint(start + epochSize - 1).archive,
-          outHash: bytes32(0),
+          endArchive: endCheckpointLog.archive,
+          outHash: endCheckpointLog.outHash,
           proverId: address(0)
         });
 

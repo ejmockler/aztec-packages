@@ -39,6 +39,8 @@ impl CheckpointRootSingleBlockRollupPrivateInputs {
 
         CheckpointRollupPublicInputsComposer::new(
             [self.previous_rollup.public_inputs],
+            hints.previous_out_hash,
+            hints.new_out_hash_sibling_path,
             hints.start_blob_accumulator,
             hints.final_blob_challenges,
             hints.blobs_fields,

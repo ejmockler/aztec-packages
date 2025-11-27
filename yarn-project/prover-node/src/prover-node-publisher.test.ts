@@ -142,6 +142,7 @@ describe('prover-node-publisher', () => {
           payloadDigest: '0x', // unused,
           headerHash: '0x', // unused,
           blobCommitmentsHash: '0x', // unused,
+          outHash: '0x', // unused,
           slotNumber: 0n, // unused,
           feeHeader: {
             excessMana: 0n, // unused
@@ -211,6 +212,7 @@ describe('prover-node-publisher', () => {
         payloadDigest: '0x', // unused,
         headerHash: '0x', // unused,
         blobCommitmentsHash: '0x', // unused,
+        outHash: '0x', // unused,
         slotNumber: 0n, // unused,
         feeHeader: {
           excessMana: 0n, // unused

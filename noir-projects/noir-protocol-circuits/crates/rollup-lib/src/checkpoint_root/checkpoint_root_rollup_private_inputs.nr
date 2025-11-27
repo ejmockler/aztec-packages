@@ -6,12 +6,12 @@ use crate::{
 };
 use blob::abis::{BlobAccumulator, BLSPoint, FinalBlobBatchingChallenges};
 use types::{
-    abis::block_header::BlockHeader,
+    abis::{append_only_tree_snapshot::AppendOnlyTreeSnapshot, block_header::BlockHeader},
     constants::{
         ARCHIVE_HEIGHT, BLOBS_PER_CHECKPOINT, BLOCK_MERGE_ROLLUP_VK_INDEX,
         BLOCK_ROOT_EMPTY_TX_FIRST_ROLLUP_VK_INDEX, BLOCK_ROOT_FIRST_ROLLUP_VK_INDEX,
         BLOCK_ROOT_ROLLUP_VK_INDEX, BLOCK_ROOT_SINGLE_TX_FIRST_ROLLUP_VK_INDEX,
-        BLOCK_ROOT_SINGLE_TX_ROLLUP_VK_INDEX, FIELDS_PER_BLOB,
+        BLOCK_ROOT_SINGLE_TX_ROLLUP_VK_INDEX, FIELDS_PER_BLOB, OUT_HASH_TREE_HEIGHT,
     },
     proof::proof_data::RollupHonkProofData,
 };
@@ -37,6 +37,12 @@ pub struct CheckpointRootRollupHints {
     pub(crate) previous_block_header: BlockHeader,
     // Hint for checking that the hash of `previous_block_header` is the last leaf of the previous archive.
     pub(crate) previous_archive_sibling_path: [Field; ARCHIVE_HEIGHT],
+
+    // Snapshot of the out hash tree immediately before this checkpoint, or empty if this is the first checkpoint in
+    // the epoch.
+    pub(crate) previous_out_hash: AppendOnlyTreeSnapshot,
+    // Hint for inserting this checkpoint's out hash into the tree.
+    pub(crate) new_out_hash_sibling_path: [Field; OUT_HASH_TREE_HEIGHT],
 
     // The current blob accumulation state immediately before this checkpoint.
     // It will be outputted and checked against the `end_blob_accumulator` of the previous checkpoint in checkpoint
@@ -73,6 +79,8 @@ impl CheckpointRootRollupPrivateInputs {
         let previous_rollups = self.previous_rollups.map(|rollup| rollup.public_inputs);
         CheckpointRollupPublicInputsComposer::new(
             previous_rollups,
+            hints.previous_out_hash,
+            hints.new_out_hash_sibling_path,
             hints.start_blob_accumulator,
             hints.final_blob_challenges,
             hints.blobs_fields,

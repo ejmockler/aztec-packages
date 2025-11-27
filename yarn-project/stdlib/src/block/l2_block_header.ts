@@ -26,7 +26,8 @@ export class L2BlockHeader {
     public lastArchive: AppendOnlyTreeSnapshot,
     public blobsHash: Fr,
     public inHash: Fr,
-    public outHash: Fr,
+    /** Root of the out hash tree. Leaves are the out hashes of this block and all previous blocks in the epoch. */
+    public outHashRoot: Fr,
     /** State reference. */
     public state: StateReference,
     /** Global variables of an L2 block. */
@@ -47,7 +48,7 @@ export class L2BlockHeader {
         lastArchive: AppendOnlyTreeSnapshot.schema,
         blobsHash: schemas.Fr,
         inHash: schemas.Fr,
-        outHash: schemas.Fr,
+        outHashRoot: schemas.Fr,
         state: StateReference.schema,
         globalVariables: GlobalVariables.schema,
         totalFees: schemas.Fr,
@@ -63,7 +64,7 @@ export class L2BlockHeader {
       fields.lastArchive,
       fields.blobsHash,
       fields.inHash,
-      fields.outHash,
+      fields.outHashRoot,
       fields.state,
       fields.globalVariables,
       fields.totalFees,
@@ -90,7 +91,7 @@ export class L2BlockHeader {
       this.lastArchive.getSize() +
       this.blobsHash.size +
       this.inHash.size +
-      this.outHash.size +
+      this.outHashRoot.size +
       this.state.getSize() +
       this.globalVariables.getSize() +
       this.totalFees.size +
@@ -151,7 +152,7 @@ export class L2BlockHeader {
       lastArchive: AppendOnlyTreeSnapshot.empty(),
       blobsHash: Fr.ZERO,
       inHash: Fr.ZERO,
-      outHash: Fr.ZERO,
+      outHashRoot: Fr.ZERO,
       state: StateReference.empty(),
       globalVariables: GlobalVariables.empty(),
       totalFees: Fr.ZERO,
@@ -167,7 +168,7 @@ export class L2BlockHeader {
       this.lastArchive.isEmpty() &&
       this.blobsHash.isZero() &&
       this.inHash.isZero() &&
-      this.outHash.isZero() &&
+      this.outHashRoot.isZero() &&
       this.state.isEmpty() &&
       this.globalVariables.isEmpty() &&
       this.totalFees.isZero() &&
@@ -195,7 +196,7 @@ export class L2BlockHeader {
       this.blockHeadersHash,
       this.blobsHash,
       this.inHash,
-      this.outHash,
+      this.outHashRoot,
       this.globalVariables.slotNumber,
       this.globalVariables.timestamp,
       this.globalVariables.coinbase,
@@ -221,7 +222,7 @@ export class L2BlockHeader {
       lastArchive: this.lastArchive.root.toString(),
       blobsHash: this.blobsHash.toString(),
       inHash: this.inHash.toString(),
-      outHash: this.outHash.toString(),
+      outHashRoot: this.outHashRoot.toString(),
       state: this.state.toInspect(),
       globalVariables: this.globalVariables.toInspect(),
       totalFees: this.totalFees.toBigInt(),
@@ -236,7 +237,7 @@ export class L2BlockHeader {
   lastArchive: ${inspect(this.lastArchive)},
   blobsHash: ${inspect(this.blobsHash)},
   inHash: ${inspect(this.inHash)},
-  outHash: ${inspect(this.outHash)},
+  outHashRoot: ${inspect(this.outHashRoot)},
   state.l1ToL2MessageTree: ${inspect(this.state.l1ToL2MessageTree)},
   state.noteHashTree: ${inspect(this.state.partial.noteHashTree)},
   state.nullifierTree: ${inspect(this.state.partial.nullifierTree)},
@@ -254,7 +255,7 @@ export class L2BlockHeader {
       this.lastArchive.equals(other.lastArchive) &&
       this.blobsHash.equals(other.blobsHash) &&
       this.inHash.equals(other.inHash) &&
-      this.outHash.equals(other.outHash) &&
+      this.outHashRoot.equals(other.outHashRoot) &&
       this.state.equals(other.state) &&
       this.globalVariables.equals(other.globalVariables) &&
       this.totalFees.equals(other.totalFees) &&

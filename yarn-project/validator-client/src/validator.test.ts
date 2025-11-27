@@ -22,13 +22,18 @@ import {
 import { OffenseType, WANT_TO_SLASH_EVENT } from '@aztec/slasher';
 import { AztecAddress } from '@aztec/stdlib/aztec-address';
 import type { L2Block, L2BlockSource } from '@aztec/stdlib/block';
+import type { getEpochAtSlot } from '@aztec/stdlib/epoch-helpers';
 import { Gas } from '@aztec/stdlib/gas';
 import type { BuildBlockResult, IFullNodeBlockBuilder, SlasherConfig } from '@aztec/stdlib/interfaces/server';
-import { type L1ToL2MessageSource, computeInHashFromL1ToL2Messages } from '@aztec/stdlib/messaging';
+import {
+  type L1ToL2MessageSource,
+  computeEpochOutHashFromCheckpointOutHashes,
+  computeInHashFromL1ToL2Messages,
+} from '@aztec/stdlib/messaging';
 import type { BlockProposal } from '@aztec/stdlib/p2p';
 import { makeBlockAttestation, makeBlockProposal, makeL2BlockHeader, mockTx } from '@aztec/stdlib/testing';
 import { AppendOnlyTreeSnapshot } from '@aztec/stdlib/trees';
-import { BlockHeader, type Tx, TxHash } from '@aztec/stdlib/tx';
+import { BlockHeader, type Tx, TxEffect, TxHash } from '@aztec/stdlib/tx';
 import { AttestationTimeoutError } from '@aztec/stdlib/validators';
 
 import { describe, expect, it, jest } from '@jest/globals';
@@ -61,7 +66,11 @@ describe('ValidatorClient', () => {
     blockBuilder.getConfig.mockReturnValue({ l1GenesisTime: 1n, slotDuration: 24, l1ChainId: 1, rollupVersion: 1 });
     epochCache = mock<EpochCache>();
     epochCache.filterInCommittee.mockImplementation((_slot, addresses) => Promise.resolve(addresses));
+    epochCache.getL1Constants.mockReturnValue({ epochDuration: 8 } satisfies Parameters<
+      typeof getEpochAtSlot
+    >[1] as any);
     blockSource = mock<L2BlockSource>();
+    blockSource.getBlocksForEpoch.mockResolvedValue([]);
     l1ToL2MessageSource = mock<L1ToL2MessageSource>();
     txProvider = mock<TxProvider>();
     l1ToL2MessageSource.getL1ToL2Messages.mockResolvedValue([]);
@@ -237,7 +246,8 @@ describe('ValidatorClient', () => {
 
     beforeEach(() => {
       const emptyInHash = computeInHashFromL1ToL2Messages([]);
-      const blockHeader = makeL2BlockHeader(1, 100, 100, { inHash: emptyInHash });
+      const outHashRoot = computeEpochOutHashFromCheckpointOutHashes([]);
+      const blockHeader = makeL2BlockHeader(1, 100, 100, { inHash: emptyInHash, outHashRoot });
       blockNumber = blockHeader.getBlockNumber();
       proposal = makeBlockProposal({ header: blockHeader });
       // Set the current time to the start of the slot of the proposal
@@ -285,7 +295,7 @@ describe('ValidatorClient', () => {
         usedTxs: [],
         block: {
           header: blockHeader.clone(),
-          body: { txEffects: times(proposal.txHashes.length, () => ({})) },
+          body: { txEffects: times(proposal.txHashes.length, () => TxEffect.empty()) },
           archive: new AppendOnlyTreeSnapshot(proposal.archive, blockNumber),
         } as L2Block,
       };

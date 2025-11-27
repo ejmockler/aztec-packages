@@ -1,13 +1,13 @@
 use crate::{
     abis::{CheckpointRollupPublicInputs, RootRollupPublicInputs},
     checkpoint_merge::{merge_checkpoint_rollups, validate_consecutive_checkpoint_rollups},
-    root::utils::compute_epoch_out_hash::compute_epoch_out_hash,
 };
 use blob::utils::validate_final_blob_batching_challenges;
 use types::{
     constants::{
         CHECKPOINT_MERGE_ROLLUP_VK_INDEX, CHECKPOINT_PADDING_ROLLUP_VK_INDEX,
         CHECKPOINT_ROOT_ROLLUP_VK_INDEX, CHECKPOINT_ROOT_SINGLE_BLOCK_ROLLUP_VK_INDEX,
+        EMPTY_EPOCH_OUT_HASH,
     },
     proof::proof_data::RollupHonkProofData,
     traits::Empty,
@@ -70,7 +70,17 @@ impl RootRollupPrivateInputs {
             merge_checkpoint_rollups(left, right)
         };
 
-        let out_hash = compute_epoch_out_hash(merged.out_hashes);
+        // Validate that the out hash tree starts from empty.
+        assert_eq(
+            merged.previous_out_hash.root,
+            EMPTY_EPOCH_OUT_HASH,
+            "Epoch did not start with empty out hash tree root",
+        );
+        assert_eq(
+            merged.previous_out_hash.next_available_leaf_index,
+            0,
+            "Epoch did not start with zero out hash tree index",
+        );
 
         // Note: for blob batching, in `validate_consecutive_checkpoint_rollups` we have checked:
         // - left.end_blob_accumulator == right.start_blob_accumulator
@@ -91,7 +101,7 @@ impl RootRollupPrivateInputs {
         RootRollupPublicInputs {
             previous_archive_root: merged.previous_archive.root,
             new_archive_root: merged.new_archive.root,
-            out_hash,
+            out_hash: merged.new_out_hash.root,
             checkpoint_header_hashes: merged.checkpoint_header_hashes,
             fees: merged.fees,
             constants: merged.constants,

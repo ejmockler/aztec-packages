@@ -1,7 +1,11 @@
-import { AZTEC_MAX_EPOCH_DURATION } from '@aztec/constants';
+import { OUT_HASH_TREE_LEAF_COUNT } from '@aztec/constants';
 import { padArrayEnd } from '@aztec/foundation/collection';
 import { Fr } from '@aztec/foundation/fields';
-import { computeCompressedUnbalancedShaRoot, computeUnbalancedShaRoot } from '@aztec/foundation/trees';
+import {
+  computeBalancedShaRoot,
+  computeCompressedUnbalancedShaRoot,
+  computeUnbalancedShaRoot,
+} from '@aztec/foundation/trees';
 
 export function computeTxOutHash(messages: Fr[]): Fr {
   if (!messages.length) {
@@ -12,27 +16,29 @@ export function computeTxOutHash(messages: Fr[]): Fr {
   return Fr.fromBuffer(computeUnbalancedShaRoot(messages.map(msg => msg.toBuffer())));
 }
 
-export function computeBlockOutHash(messagesPerBlock: Fr[][]): Fr {
-  const txOutHashes = messagesPerBlock.map(messages => computeTxOutHash(messages));
+export function computeBlockOutHash(messagesPerTx: Fr[][]): Fr {
+  const txOutHashes = messagesPerTx.map(messages => computeTxOutHash(messages));
   return aggregateOutHashes(txOutHashes);
 }
 
-export function computeCheckpointOutHash(messagesForAllTxs: Fr[][][]): Fr {
-  const blockOutHashes = messagesForAllTxs.map(block => computeBlockOutHash(block));
+export function computeCheckpointOutHash(messagesPerBlock: Fr[][][]): Fr {
+  const blockOutHashes = messagesPerBlock.map(block => computeBlockOutHash(block));
   return aggregateOutHashes(blockOutHashes);
 }
 
-export function computeEpochOutHash(messagesInEpoch: Fr[][][][]): Fr {
+export function computeEpochOutHash(messagesPerCheckpoint: Fr[][][][]): Fr {
   // Must match the implementation in `compute_epoch_out_hash.nr`.
-  const checkpointOutHashes = messagesInEpoch
-    .map(checkpoint => computeCheckpointOutHash(checkpoint))
-    .map(hash => hash.toBuffer());
-  if (checkpointOutHashes.every(hash => hash.equals(Buffer.alloc(32)))) {
-    return Fr.ZERO;
-  }
+  const checkpointOutHashes = messagesPerCheckpoint.map(checkpoint => computeCheckpointOutHash(checkpoint));
+  return computeEpochOutHashFromCheckpointOutHashes(checkpointOutHashes);
+}
 
-  const paddedOutHashes = padArrayEnd(checkpointOutHashes, Buffer.alloc(32), AZTEC_MAX_EPOCH_DURATION);
-  return Fr.fromBuffer(computeUnbalancedShaRoot(paddedOutHashes));
+export function computeEpochOutHashFromCheckpointOutHashes(checkpointOutHashes: Fr[]): Fr {
+  const paddedOutHashes = padArrayEnd(
+    checkpointOutHashes.map(hash => hash.toBuffer()),
+    Buffer.alloc(32),
+    OUT_HASH_TREE_LEAF_COUNT,
+  );
+  return Fr.fromBuffer(computeBalancedShaRoot(paddedOutHashes));
 }
 
 // The root of this tree should match the `out_hash` calculated in the circuits. Zero hashes are compressed to reduce

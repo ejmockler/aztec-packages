@@ -28,7 +28,7 @@ import {
   SequencerConfigSchema,
   type WorldStateSynchronizer,
 } from '@aztec/stdlib/interfaces/server';
-import type { L1ToL2MessageSource } from '@aztec/stdlib/messaging';
+import { type L1ToL2MessageSource, computeCheckpointOutHash } from '@aztec/stdlib/messaging';
 import type { BlockProposalOptions } from '@aztec/stdlib/p2p';
 import { orderAttestations } from '@aztec/stdlib/p2p';
 import { CheckpointHeader } from '@aztec/stdlib/rollup';
@@ -262,7 +262,7 @@ export class Sequencer extends (EventEmitter as new () => TypedEventEmitter<Sequ
    */
   protected async work() {
     this.setState(SequencerState.SYNCHRONIZING, undefined);
-    const { slot, ts, now } = this.epochCache.getEpochAndSlotInNextL1Slot();
+    const { epoch, slot, ts, now } = this.epochCache.getEpochAndSlotInNextL1Slot();
 
     // Check we have not already published a block for this slot (cheapest check)
     if (this.lastBlockPublished && this.lastBlockPublished.header.getSlot() >= slot) {
@@ -413,6 +413,7 @@ export class Sequencer extends (EventEmitter as new () => TypedEventEmitter<Sequ
     this.setState(SequencerState.INITIALIZING_PROPOSAL, slot);
     this.metrics.incOpenSlot(slot, proposer?.toString() ?? 'unknown');
     const block: L2Block | undefined = await this.tryBuildBlockAndEnqueuePublish(
+      epoch,
       slot,
       proposer,
       newBlockNumber,
@@ -465,6 +466,7 @@ export class Sequencer extends (EventEmitter as new () => TypedEventEmitter<Sequ
 
   /** Tries building a block proposal, and if successful, enqueues it for publishing. */
   private async tryBuildBlockAndEnqueuePublish(
+    epoch: bigint,
     slot: bigint,
     proposer: EthAddress | undefined,
     newBlockNumber: number,
@@ -489,7 +491,7 @@ export class Sequencer extends (EventEmitter as new () => TypedEventEmitter<Sequ
       blockHeadersHash: Fr.ZERO,
       blobsHash: Fr.ZERO,
       inHash: Fr.ZERO,
-      outHash: Fr.ZERO,
+      outHashRoot: Fr.ZERO,
       totalManaUsed: Fr.ZERO,
     });
 
@@ -505,6 +507,7 @@ export class Sequencer extends (EventEmitter as new () => TypedEventEmitter<Sequ
           pendingTxs,
           proposalHeader,
           newGlobalVariables,
+          epoch,
           proposer,
           invalidateBlock,
           publisher,
@@ -638,6 +641,7 @@ export class Sequencer extends (EventEmitter as new () => TypedEventEmitter<Sequ
     pendingTxs: Iterable<Tx> | AsyncIterable<Tx>,
     proposalHeader: CheckpointHeader,
     newGlobalVariables: GlobalVariables,
+    epoch: bigint,
     proposerAddress: EthAddress | undefined,
     invalidateBlock: InvalidateBlockRequest | undefined,
     publisher: SequencerPublisher,
@@ -648,6 +652,13 @@ export class Sequencer extends (EventEmitter as new () => TypedEventEmitter<Sequ
     const slot = proposalHeader.slotNumber.toBigInt();
     const l1ToL2Messages = await this.l1ToL2MessageSource.getL1ToL2Messages(blockNumber);
 
+    const previousBlocks = (await this.l2BlockSource.getBlocksForEpoch(epoch))
+      .filter(b => b.number < blockNumber)
+      .sort((a, b) => a.number - b.number);
+    const previousCheckpointOutHashes = previousBlocks.map(b =>
+      computeCheckpointOutHash([b.body.txEffects.map(tx => tx.l2ToL1Msgs)]),
+    );
+
     const workTimer = new Timer();
     this.setState(SequencerState.CREATING_BLOCK, slot);
 
@@ -656,6 +667,7 @@ export class Sequencer extends (EventEmitter as new () => TypedEventEmitter<Sequ
       const buildBlockRes = await this.blockBuilder.buildBlock(
         pendingTxs,
         l1ToL2Messages,
+        previousCheckpointOutHashes,
         newGlobalVariables,
         blockBuilderOptions,
       );

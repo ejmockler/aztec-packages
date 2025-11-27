@@ -265,6 +265,7 @@ describe('sequencer', () => {
       getL1Timestamp: mockFn().mockResolvedValue(1000n),
       isPendingChainInvalid: mockFn().mockResolvedValue(false),
       getPendingChainValidationStatus: mockFn().mockResolvedValue({ valid: true }),
+      getBlocksForEpoch: mockFn().mockResolvedValue([]),
     });
 
     l1ToL2MessageSource = mock<L1ToL2MessageSource>({
@@ -391,6 +392,7 @@ describe('sequencer', () => {
       expect(blockBuilder.buildBlock).toHaveBeenCalledWith(
         expect.anything(),
         expect.anything(),
+        expect.anything(),
         globalVariables,
         expect.anything(),
       );
@@ -420,6 +422,7 @@ describe('sequencer', () => {
       await sequencer.work();
 
       expect(blockBuilder.buildBlock).toHaveBeenCalledWith(
+        expect.anything(),
         expect.anything(),
         expect.anything(),
         globalVariables,
@@ -612,6 +615,7 @@ describe('sequencer', () => {
 
         await sequencer.work();
         expect(blockBuilder.buildBlock).toHaveBeenCalledWith(
+          expect.anything(),
           expect.anything(),
           expect.anything(),
           globalVariables,
