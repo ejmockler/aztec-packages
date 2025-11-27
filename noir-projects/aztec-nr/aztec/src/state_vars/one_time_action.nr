@@ -64,12 +64,9 @@ where
         self.context.push_nullifier(self.compute_nullifier(action, owner_nsk_app));
     }
 
-    // TODO: write e2e test to test this with kernel prover machinery
     pub fn assert_done(self, action: ACTION) {
         let owner_nsk_app = self.context.request_nsk_app(get_public_keys(self.owner).npk_m.hash());
-
         let nullifier = self.compute_nullifier(action, owner_nsk_app);
-
         self.context.push_nullifier_read_request(nullifier, self.context.this_address())
     }
 }
