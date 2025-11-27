@@ -1,6 +1,8 @@
 #include "barretenberg/vm2/simulation/standalone/hybrid_execution.hpp"
 
 #include "barretenberg/common/bb_bench.hpp"
+#include "barretenberg/vm2/simulation/interfaces/addressing.hpp"
+#include "barretenberg/vm2/simulation/interfaces/bytecode_manager.hpp"
 
 namespace bb::avm2::simulation {
 
