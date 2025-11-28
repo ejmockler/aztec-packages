@@ -80,7 +80,7 @@ constexpr std::array<C, AVM_MAX_OPERANDS> OPERAND_IS_RELATIVE_VALID_BASE_COLUMNS
     C::execution_sel_op_do_overflow_check_6_,
 };
 constexpr size_t TOTAL_INDIRECT_BITS = 16;
-static_assert(AVM_MAX_OPERANDS * 2 <= TOTAL_INDIRECT_BITS);
+static_assert(static_cast<size_t>(AVM_MAX_OPERANDS) * 2 <= TOTAL_INDIRECT_BITS);
 constexpr std::array<C, TOTAL_INDIRECT_BITS / 2> OPERAND_IS_RELATIVE_WIRE_COLUMNS = {
     C::execution_sel_op_is_relative_wire_0_, C::execution_sel_op_is_relative_wire_1_,
     C::execution_sel_op_is_relative_wire_2_, C::execution_sel_op_is_relative_wire_3_,
@@ -263,11 +263,18 @@ uint32_t dying_context_for_phase(TransactionPhase phase, const FailingContexts& 
            "Execution events must have app logic or teardown phase");
 
     switch (phase) {
-    case TransactionPhase::APP_LOGIC:
+    case TransactionPhase::APP_LOGIC: {
+        if (failures.app_logic_failure) {
+            return failures.app_logic_exit_context_id;
+        }
+
         // Note that app logic also gets discarded if teardown failures
-        return failures.app_logic_failure  ? failures.app_logic_exit_context_id
-               : failures.teardown_failure ? failures.teardown_exit_context_id
-                                           : 0;
+        if (failures.teardown_failure) {
+            return failures.teardown_exit_context_id;
+        }
+
+        return 0;
+    }
     case TransactionPhase::TEARDOWN:
         return failures.teardown_failure ? failures.teardown_exit_context_id : 0;
     default:
@@ -658,7 +665,7 @@ void ExecutionTraceBuilder::process(
                           { { { C::execution_sel_l2_to_l1_msg_limit_error, remaining_l2_to_l1_msgs == 0 },
                               { C::execution_remaining_l2_to_l1_msgs_inv,
                                 remaining_l2_to_l1_msgs }, // Will be inverted in batch later.
-                              { C::execution_sel_write_l2_to_l1_msg, !opcode_execution_failed && !discard },
+                              { C::execution_sel_write_l2_to_l1_msg, !opcode_execution_failed && discard == 0 },
                               {
                                   C::execution_public_inputs_index,
                                   AVM_PUBLIC_INPUTS_AVM_ACCUMULATED_DATA_L2_TO_L1_MSGS_ROW_IDX +
@@ -947,7 +954,7 @@ void ExecutionTraceBuilder::process_addressing(const simulation::AddressingEvent
         FF power_of_2 = 1;
         for (size_t i = 0; i < AVM_MAX_OPERANDS; ++i) {
             batched_tags_diff +=
-                FF(is_indirect_effective[i]) * power_of_2 * (FF(resolved_operand_tag[i]) - FF(MEM_TAG_U32));
+                FF(is_indirect_effective[i] ? 1 : 0) * power_of_2 * (FF(resolved_operand_tag[i]) - FF(MEM_TAG_U32));
             power_of_2 *= 8; // 2^3
         }
         batched_tags_diff_inv = batched_tags_diff; // Will be inverted in batch later.
