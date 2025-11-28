@@ -14,6 +14,13 @@ err() { echo "[ERROR] $(date -Is) - $*" >&2; }
 die() { err "$*"; exit 1; }
 
 ########################
+# TIMING INSTRUMENTATION
+########################
+# Capture deployment timings for CI benchmarks
+DEPLOY_START_TIME=$(date +%s)
+declare -A STAGE_TIMINGS
+
+########################
 # GLOBAL VARIABLES
 ########################
 NAMESPACE=${NAMESPACE} # required
@@ -142,12 +149,6 @@ P2P_GOSSIPSUB_DHI=${P2P_GOSSIPSUB_DHI:-12}
 P2P_DROP_TX=${P2P_DROP_TX:-false}
 P2P_DROP_TX_CHANCE=${P2P_DROP_TX_CHANCE:-0}
 
-########################
-# CHAOS MESH VARIABLES
-########################
-DESTROY_CHAOS_MESH=${DESTROY_CHAOS_MESH:-false}
-CREATE_CHAOS_MESH=${CREATE_CHAOS_MESH:-false}
-
 
 # Compute validator addresses (skip if no validators)
 if [[ $VALIDATOR_REPLICAS -gt 0 ]]; then
@@ -219,6 +220,7 @@ L1_CONSENSUS_HOST_API_KEY_HEADERS_JSON="[]"
 
 if [[ "${CREATE_ETH_DEVNET}" == "true" ]]; then
   log "CREATE_ETH_DEVNET=true - deploying Ethereum devnet"
+  ETH_DEVNET_START=$(date +%s)
 
   DEPLOY_ETH_DEVNET_DIR="${SCRIPT_DIR}/../terraform/deploy-eth-devnet"
   cat > "${DEPLOY_ETH_DEVNET_DIR}/terraform.tfvars" << EOF
@@ -241,6 +243,7 @@ EOF
 
   L1_RPC_URL=$(terraform -chdir="${DEPLOY_ETH_DEVNET_DIR}" output -raw eth_execution_rpc_url)
   L1_CONSENSUS_HOST_URL=$(terraform -chdir="${DEPLOY_ETH_DEVNET_DIR}" output -raw eth_beacon_api_url)
+  STAGE_TIMINGS[eth_devnet]=$(($(date +%s) - ETH_DEVNET_START))
   [[ -n "${L1_RPC_URL}" ]] || die "Failed to fetch eth_execution_rpc_url"
   [[ -n "${L1_CONSENSUS_HOST_URL}" ]] || die "Failed to fetch eth_beacon_api_url"
 
@@ -270,6 +273,7 @@ fi
 # -------------------------------
 # Deploy rollup contracts
 # -------------------------------
+ROLLUP_CONTRACTS_START=$(date +%s)
 DEPLOY_ROLLUP_CONTRACTS_DIR="${SCRIPT_DIR}/../terraform/deploy-rollup-contracts"
 "${SCRIPT_DIR}/override_terraform_backend.sh" "${DEPLOY_ROLLUP_CONTRACTS_DIR}" "${CLUSTER}" "${BASE_STATE_PATH}/deploy-rollup-contracts/${SALT}"
 
@@ -324,6 +328,16 @@ JOB_TTL_SECONDS_AFTER_FINISHED = 3600
 EOF
 
 tf_run "${DEPLOY_ROLLUP_CONTRACTS_DIR}" "${DESTROY_ROLLUP_CONTRACTS}" "${CREATE_ROLLUP_CONTRACTS}"
+
+# Print logs from any failed pods (useful if job succeeded after retries)
+JOB_NAME=$(terraform -chdir="${DEPLOY_ROLLUP_CONTRACTS_DIR}" output -raw job_name)
+for pod in $(kubectl get pods -n "${NAMESPACE}" -l "job-name=${JOB_NAME}" \
+  --field-selector=status.phase=Failed -o jsonpath='{.items[*].metadata.name}' 2>/dev/null); do
+  echo "=== Failed pod: $pod ==="
+  kubectl logs -n "${NAMESPACE}" "$pod" 2>/dev/null || true
+done
+
+STAGE_TIMINGS[rollup_contracts]=$(($(date +%s) - ROLLUP_CONTRACTS_START))
 log "Deployed rollup contracts"
 
 if [[ "${VERIFY_CONTRACTS:-}" == "true" && "${CREATE_ROLLUP_CONTRACTS}" == "true" ]]; then
@@ -350,6 +364,7 @@ fi
 # -------------------------------
 # Deploy Aztec infra
 # -------------------------------
+AZTEC_INFRA_START=$(date +%s)
 DEPLOY_AZTEC_INFRA_DIR="${SCRIPT_DIR}/../terraform/deploy-aztec-infra"
 "${SCRIPT_DIR}/override_terraform_backend.sh" "${DEPLOY_AZTEC_INFRA_DIR}" "${CLUSTER}" "${BASE_STATE_PATH}/deploy-aztec-infra/${SALT}"
 
@@ -458,25 +473,31 @@ FISHERMAN_LOG_LEVEL = "${FISHERMAN_LOG_LEVEL}"
 EOF
 
 tf_run "${DEPLOY_AZTEC_INFRA_DIR}" "${DESTROY_AZTEC_INFRA}" "${CREATE_AZTEC_INFRA}"
+STAGE_TIMINGS[aztec_infra]=$(($(date +%s) - AZTEC_INFRA_START))
 log "Deployed aztec infra"
 
+# Calculate total deployment time
+DEPLOY_END_TIME=$(date +%s)
+TOTAL_DEPLOY_TIME=$((DEPLOY_END_TIME - DEPLOY_START_TIME))
 
+# Output benchmark JSON for CI benchmarks
+mkdir -p "${SCRIPT_DIR}/../bench-out"
+BENCH_OUTPUT="${SCRIPT_DIR}/../bench-out/network_deploy.bench.json"
 
-########################################
-# Optionally deploy Chaos Mesh via Helm
-########################################
-if [[ "${CREATE_CHAOS_MESH}" == "true" ]]; then
-  log "CREATE_CHAOS_MESH=true - deploying Chaos Mesh"
-  DEPLOY_CHAOS_MESH_DIR="${SCRIPT_DIR}/../terraform/deploy-chaos-mesh"
-  cat > "${DEPLOY_CHAOS_MESH_DIR}/terraform.tfvars" << EOF
-K8S_CLUSTER_CONTEXT = "${K8S_CLUSTER_CONTEXT}"
-RELEASE_NAME = "chaos"
-CHAOS_MESH_NAMESPACE = "chaos-mesh"
-EOF
+# Build benchmark JSON array
+BENCH_JSON='['
+BENCH_JSON+='{"name": "ci/network_deploy/total", "value": '"${TOTAL_DEPLOY_TIME}"', "unit": "seconds"}'
 
-  "${SCRIPT_DIR}/override_terraform_backend.sh" "${DEPLOY_CHAOS_MESH_DIR}" "${CLUSTER}" "${BASE_STATE_PATH}/deploy-chaos-mesh/${SALT}"
-  tf_run "${DEPLOY_CHAOS_MESH_DIR}" "${DESTROY_CHAOS_MESH}" "${CREATE_CHAOS_MESH}"
-  log "Chaos Mesh installed"
-else
-  log "CREATE_CHAOS_MESH=false - skipping Chaos Mesh installation"
+if [[ -n "${STAGE_TIMINGS[eth_devnet]:-}" ]]; then
+  BENCH_JSON+=',{"name": "ci/network_deploy/eth_devnet", "value": '"${STAGE_TIMINGS[eth_devnet]}"', "unit": "seconds"}'
 fi
+
+BENCH_JSON+=',{"name": "ci/network_deploy/rollup_contracts", "value": '"${STAGE_TIMINGS[rollup_contracts]}"', "unit": "seconds"}'
+BENCH_JSON+=',{"name": "ci/network_deploy/aztec_infra", "value": '"${STAGE_TIMINGS[aztec_infra]}"', "unit": "seconds"}'
+BENCH_JSON+=']'
+
+echo "${BENCH_JSON}" | jq '.' > "${BENCH_OUTPUT}"
+log "Benchmark JSON written to ${BENCH_OUTPUT}"
+
+log "Total deployment time: ${TOTAL_DEPLOY_TIME} seconds"
+
