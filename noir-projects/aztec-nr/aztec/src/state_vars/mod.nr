@@ -1,5 +1,5 @@
 pub mod map;
-pub mod one_time_action;
+pub mod single_use_claim;
 pub mod private_immutable;
 pub mod private_mutable;
 pub mod public_immutable;
@@ -10,10 +10,10 @@ pub mod storage;
 
 pub use crate::state_vars::delayed_public_mutable::DelayedPublicMutable;
 pub use crate::state_vars::map::Map;
-pub use crate::state_vars::one_time_action::OneTimeAction;
 pub use crate::state_vars::private_immutable::PrivateImmutable;
 pub use crate::state_vars::private_mutable::PrivateMutable;
 pub use crate::state_vars::private_set::PrivateSet;
 pub use crate::state_vars::public_immutable::PublicImmutable;
 pub use crate::state_vars::public_mutable::PublicMutable;
+pub use crate::state_vars::single_use_claim::SingleUseClaim;
 pub use crate::state_vars::storage::HasStorageSlot;

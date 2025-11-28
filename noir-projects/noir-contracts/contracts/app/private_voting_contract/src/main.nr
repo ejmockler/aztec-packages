@@ -7,7 +7,7 @@ pub contract PrivateVoting {
     use dep::aztec::macros::{functions::{external, initializer, only_self}, storage::storage};
     use dep::aztec::protocol_types::{address::AztecAddress, traits::Serialize};
     use dep::aztec::state_vars::{
-        Map, one_time_action::OneTimeAction, PublicImmutable, PublicMutable,
+        Map, PublicImmutable, PublicMutable, single_use_claim::SingleUseClaim,
     };
 
     #[derive(Serialize)]
@@ -21,7 +21,7 @@ pub contract PrivateVoting {
         tally: Map<Field, PublicMutable<Field, Context>, Context>, // we will store candidate as key and number of votes as value
         vote_ended: PublicMutable<bool, Context>, // vote_ended is boolean
         active_at_block: PublicImmutable<u32, Context>, // when people can start voting
-        vote_coupons: OneTimeAction<Vote, Context>, // ensure that each user can only vote once
+        vote_claims: SingleUseClaim<Vote, Context>, // ensure that each user can only vote once
     }
     // docs:end:storage_struct
 
@@ -37,7 +37,7 @@ pub contract PrivateVoting {
 
     #[external("private")]
     fn cast_vote(candidate: Field) {
-        self.storage.vote_coupons.at(self.msg_sender().unwrap()).do(Vote {});
+        self.storage.vote_claims.at(self.msg_sender().unwrap()).claim(Vote {});
         self.enqueue_self.add_to_tally_public(candidate);
     }
 
