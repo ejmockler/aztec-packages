@@ -165,7 +165,6 @@ void build_constraints(Builder& builder, AcirProgram& program, const ProgramMeta
         auto constraint_variables = bb::get_difference_real_variable_indices_states(before_constraints, builder);
         builder.update_constraint_witnesses(constraint_variables);
         builder.save_and_clear_logic_witnesses();
-        builder.save_and_clear_tmp_marked_logic_witnesses();
         gate_counter.track_diff(constraint_system.gates_per_opcode,
                                 constraint_system.original_opcode_indices.logic_constraints.at(i));
     }
