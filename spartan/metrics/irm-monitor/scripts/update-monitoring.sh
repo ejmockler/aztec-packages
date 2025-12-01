@@ -96,6 +96,15 @@ echo "New rollup contract address: $ROLLUP_CONTRACT_ADDRESS"
 kill $PF_PID || true
 trap - EXIT
 
+
+# Build image if missing (initial install path only)
+SCRIPT_BUILD="$SCRIPT_DIR/build-and-publish.sh"
+if [ -x "$SCRIPT_BUILD" ]; then
+  echo "Ensuring image aztecprotocol/block-height-monitor:${IMAGE_TAG} exists..."
+  "$SCRIPT_BUILD" "$IMAGE_TAG"
+fi
+
+
 # Check current deployment value BEFORE applying anything; skip if unchanged
 CURRENT_CONTRACT_ADDRESS=$(kubectl -n "$MONITORING_NAMESPACE" get deploy "$DEPLOYMENT_NAME" -o jsonpath='{.spec.template.spec.containers[?(@.name=="aztec-chain-monitor")].env[?(@.name=="ROLLUP_CONTRACT_ADDRESS")].value}' 2>/dev/null || true)
 if [ -n "$CURRENT_CONTRACT_ADDRESS" ] && [ "$CURRENT_CONTRACT_ADDRESS" = "$ROLLUP_CONTRACT_ADDRESS" ]; then
@@ -152,13 +161,6 @@ yq eval ".metadata.name = \"${DEPLOYMENT_NAME}\" |
          .metadata.labels.app = \"${DEPLOYMENT_NAME}\" |
          .spec.selector.app = \"${DEPLOYMENT_NAME}\"" \
     "$BASE_DIR/kubernetes/monitoring-service.yaml" | kubectl -n "$MONITORING_NAMESPACE" apply -f -
-
-# Build image if missing (initial install path only)
-SCRIPT_BUILD="$SCRIPT_DIR/build-and-publish.sh"
-if [ -x "$SCRIPT_BUILD" ]; then
-  echo "Ensuring image aztecprotocol/block-height-monitor:${IMAGE_TAG} exists..."
-  "$SCRIPT_BUILD" "$IMAGE_TAG"
-fi
 
 echo "Applying Deployment..."
 yq eval ".metadata.name = \"${DEPLOYMENT_NAME}\" |
