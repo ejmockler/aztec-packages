@@ -106,13 +106,12 @@ describe('e2e_offchain_effect', () => {
       .simulate({ from: defaultAccountAddress });
 
     // Get the event from PXE
-    const events = await wallet.getPrivateEvents<TestEvent>(
-      contract1.address,
-      OffchainEffectContract.events.TestEvent,
-      blockNumber!,
-      1,
-      [recipient],
-    );
+    const events = await wallet.getPrivateEvents<TestEvent>(OffchainEffectContract.events.TestEvent, {
+      contractAddress: contract1.address,
+      fromBlock: blockNumber!,
+      toBlock: blockNumber! + 1,
+      recipients: [recipient],
+    });
 
     expect(events.length).toBe(1);
     expect(events[0]).toEqual({

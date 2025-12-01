@@ -1,4 +1,4 @@
-import { BBWASMBundlePrivateKernelProver } from '@aztec/bb-prover/client/wasm/bundle';
+import { BBBundlePrivateKernelProver } from '@aztec/bb-prover/client/bundle';
 import type { L1ContractAddresses } from '@aztec/ethereum/l1-contract-addresses';
 import { omit } from '@aztec/foundation/collection';
 import { EthAddress } from '@aztec/foundation/eth-address';
@@ -35,7 +35,7 @@ describe('PXE', () => {
     kvStore = await openTmpStore('test');
     node = mock<AztecNode>();
     const simulator = new WASMSimulator();
-    const kernelProver = new BBWASMBundlePrivateKernelProver(simulator);
+    const kernelProver = new BBBundlePrivateKernelProver(simulator);
     const protocolContractsProvider = new BundledProtocolContractsProvider();
     const config: PXEConfig = {
       l2BlockBatchSize: 50,
@@ -199,18 +199,19 @@ describe('PXE', () => {
 
     async function storeEvent(index: number): Promise<PrivateEvent> {
       const event = {
-        msgContent: [Fr.random(), Fr.random()],
+        packedEvent: [Fr.random(), Fr.random()],
         blockNumber,
         blockHash,
         txHash: TxHash.random(),
         recipient,
+        eventSelector,
       };
 
       await privateEventDataProvider.storePrivateEventLog(
         contractAddress,
         recipient,
         eventSelector,
-        event.msgContent,
+        event.packedEvent,
         event.txHash,
         index,
         blockNumber,
@@ -225,13 +226,21 @@ describe('PXE', () => {
       const event1 = await storeEvent(0);
       const event2 = await storeEvent(1);
 
-      const events = await pxe.getPrivateEvents(contractAddress, eventSelector, blockNumber, 1, [recipient]);
+      const events = await pxe.getPrivateEvents(eventSelector, {
+        contractAddress,
+        fromBlock: blockNumber,
+        recipients: [recipient],
+      });
 
       expect(events).toEqual([event1, event2]);
     });
 
     it('returns no events', async () => {
-      const events = await pxe.getPrivateEvents(contractAddress, eventSelector, blockNumber, 1, [recipient]);
+      const events = await pxe.getPrivateEvents(eventSelector, {
+        contractAddress,
+        fromBlock: blockNumber,
+        recipients: [recipient],
+      });
 
       expect(events).toEqual([]);
     });
@@ -240,9 +249,13 @@ describe('PXE', () => {
       await storeEvent(0);
       await storeEvent(1);
 
-      await expect(pxe.getPrivateEvents(contractAddress, eventSelector, blockNumber, 1, [])).rejects.toThrow(
-        /Recipients are required/,
-      );
+      await expect(
+        pxe.getPrivateEvents(eventSelector, {
+          contractAddress,
+          fromBlock: blockNumber,
+          recipients: [],
+        }),
+      ).rejects.toThrow(/Recipients are required/);
     });
   });
 

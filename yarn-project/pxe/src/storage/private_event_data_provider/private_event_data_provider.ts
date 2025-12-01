@@ -130,6 +130,7 @@ export class PrivateEventDataProvider {
             recipient,
             txHash,
             blockHash,
+            eventSelector,
           },
         });
       }

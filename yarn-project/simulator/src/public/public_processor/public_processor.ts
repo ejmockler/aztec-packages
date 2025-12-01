@@ -7,7 +7,14 @@ import { DateProvider, Timer, elapsed, executeTimeout } from '@aztec/foundation/
 import { ProtocolContractAddress } from '@aztec/protocol-contracts';
 import { ContractClassPublishedEvent } from '@aztec/protocol-contracts/class-registry';
 import { computeFeePayerBalanceLeafSlot, computeFeePayerBalanceStorageSlot } from '@aztec/protocol-contracts/fee-juice';
-import { PublicDataWrite } from '@aztec/stdlib/avm';
+import {
+  AvmCircuitInputs,
+  AvmCircuitPublicInputs,
+  AvmExecutionHints,
+  type AvmProvingRequest,
+  PublicDataWrite,
+  PublicSimulatorConfig,
+} from '@aztec/stdlib/avm';
 import type { AztecAddress } from '@aztec/stdlib/aztec-address';
 import type { ContractDataSource } from '@aztec/stdlib/contract';
 import { computeTransactionFee } from '@aztec/stdlib/fees';
@@ -18,6 +25,7 @@ import type {
   PublicProcessorValidator,
   SequencerConfig,
 } from '@aztec/stdlib/interfaces/server';
+import { ProvingRequestType } from '@aztec/stdlib/proofs';
 import { MerkleTreeId } from '@aztec/stdlib/trees';
 import {
   type FailedTx,
@@ -26,7 +34,6 @@ import {
   type ProcessedTx,
   StateReference,
   Tx,
-  TxExecutionPhase,
   makeProcessedTxFromPrivateOnlyTx,
   makeProcessedTxFromTxWithPublicCalls,
 } from '@aztec/stdlib/tx';
@@ -70,23 +77,12 @@ export class PublicProcessorFactory {
   public create(
     merkleTree: MerkleTreeWriteOperations,
     globalVariables: GlobalVariables,
-    config: {
-      skipFeeEnforcement: boolean;
-      clientInitiatedSimulation: boolean;
-      proverId?: Fr;
-      maxDebugLogMemoryReads?: number;
-    },
+    config: PublicSimulatorConfig,
   ): PublicProcessor {
     const contractsDB = new PublicContractsDB(this.contractDataSource);
 
     const guardedFork = new GuardedMerkleTreeOperations(merkleTree);
-    const publicTxSimulator = this.createPublicTxSimulator(guardedFork, contractsDB, globalVariables, {
-      proverId: config.proverId,
-      doMerkleOperations: true,
-      skipFeeEnforcement: config.skipFeeEnforcement,
-      clientInitiatedSimulation: config.clientInitiatedSimulation,
-      maxDebugLogMemoryReads: config.maxDebugLogMemoryReads,
-    });
+    const publicTxSimulator = this.createPublicTxSimulator(guardedFork, contractsDB, globalVariables, config);
 
     return new PublicProcessor(
       globalVariables,
@@ -237,8 +233,10 @@ export class PublicProcessor implements Traceable {
       try {
         const [processedTx, returnValues] = await this.processTx(tx, deadline);
 
+        const txBlobFields = processedTx.txEffect.getNumBlobFields();
+
         // If the actual size of this tx would exceed block size, skip it
-        const txSize = processedTx.txEffect.getDASize();
+        const txSize = txBlobFields * Fr.SIZE_IN_BYTES;
         if (maxBlockSize !== undefined && totalSizeInBytes + txSize > maxBlockSize) {
           this.log.debug(`Skipping processed tx ${txHash} sized ${txSize} due to max block size.`, {
             txHash,
@@ -253,7 +251,6 @@ export class PublicProcessor implements Traceable {
         }
 
         // If the actual blob fields of this tx would exceed the limit, skip it
-        const txBlobFields = processedTx.txEffect.toBlobFields().length;
         if (maxBlobFields !== undefined && totalBlobFields + txBlobFields > maxBlobFields) {
           this.log.debug(
             `Skipping processed tx ${txHash} with ${txBlobFields} blob fields due to max blob fields limit.`,
@@ -524,21 +521,13 @@ export class PublicProcessor implements Traceable {
   private async processTxWithPublicCalls(tx: Tx): Promise<[ProcessedTx, NestedProcessReturnValues[]]> {
     const timer = new Timer();
 
-    const { avmProvingRequest, gasUsed, revertCode, revertReason, processedPhases } =
+    const { hints, publicInputs, gasUsed, revertCode, revertReason, appLogicReturnValues } =
       await this.publicTxSimulator.simulate(tx);
 
-    if (!avmProvingRequest) {
+    if (!hints) {
       this.metrics.recordFailedTx();
       throw new Error('Avm proving result was not generated.');
     }
-
-    processedPhases.forEach(phase => {
-      if (phase.reverted) {
-        this.metrics.recordRevertedPhase(phase.phase);
-      } else {
-        this.metrics.recordPhaseDuration(phase.phase, phase.durationMs ?? 0);
-      }
-    });
 
     const contractClassLogs = revertCode.isOK()
       ? tx.getContractClassLogs()
@@ -549,14 +538,32 @@ export class PublicProcessor implements Traceable {
         .map(log => ContractClassPublishedEvent.fromLog(log)),
     );
 
-    const phaseCount = processedPhases.length;
+    // TODO(fcarreiro): remove phase count metric.
+    const phaseCount = 1;
     const durationMs = timer.ms();
     this.metrics.recordTx(phaseCount, durationMs, gasUsed.publicGas);
 
-    const processedTx = makeProcessedTxFromTxWithPublicCalls(tx, avmProvingRequest, gasUsed, revertCode, revertReason);
+    const processedTx = makeProcessedTxFromTxWithPublicCalls(
+      tx,
+      PublicProcessor.generateProvingRequest(publicInputs, hints),
+      gasUsed,
+      revertCode,
+      revertReason,
+    );
 
-    const returnValues = processedPhases.find(({ phase }) => phase === TxExecutionPhase.APP_LOGIC)?.returnValues ?? [];
+    return [processedTx, appLogicReturnValues ?? []];
+  }
 
-    return [processedTx, returnValues];
+  /**
+   * Generate the proving request for the AVM circuit.
+   */
+  private static generateProvingRequest(
+    publicInputs: AvmCircuitPublicInputs,
+    hints: AvmExecutionHints,
+  ): AvmProvingRequest {
+    return {
+      type: ProvingRequestType.PUBLIC_VM,
+      inputs: new AvmCircuitInputs(hints, publicInputs),
+    };
   }
 }

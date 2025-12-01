@@ -30,13 +30,12 @@ describe('e2e_token_contract transfer private', () => {
     const tx = await asset.methods.transfer(account1Address, amount).send({ from: adminAddress }).wait();
     tokenSim.transferPrivate(adminAddress, account1Address, amount);
 
-    const events = await wallet.getPrivateEvents<Transfer>(
-      asset.address,
-      TokenContract.events.Transfer,
-      tx.blockNumber!,
-      1,
-      [account1Address],
-    );
+    const events = await wallet.getPrivateEvents<Transfer>(TokenContract.events.Transfer, {
+      contractAddress: asset.address,
+      fromBlock: tx.blockNumber!,
+      toBlock: tx.blockNumber! + 1,
+      recipients: [account1Address],
+    });
 
     expect(events[0]).toEqual({
       from: adminAddress,

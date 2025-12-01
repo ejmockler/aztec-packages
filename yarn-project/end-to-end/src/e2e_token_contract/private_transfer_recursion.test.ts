@@ -30,13 +30,12 @@ describe('e2e_token_contract private transfer recursion', () => {
     // We should have created a single new note, for the recipient
     expect(txEffects!.data.noteHashes.length).toBe(1);
 
-    const events = await wallet.getPrivateEvents<Transfer>(
-      asset.address,
-      TokenContract.events.Transfer,
-      tx.blockNumber!,
-      1,
-      [account1Address],
-    );
+    const events = await wallet.getPrivateEvents<Transfer>(TokenContract.events.Transfer, {
+      contractAddress: asset.address,
+      fromBlock: tx.blockNumber!,
+      toBlock: tx.blockNumber! + 1,
+      recipients: [account1Address],
+    });
 
     expect(events[0]).toEqual({
       from: adminAddress,
@@ -63,13 +62,12 @@ describe('e2e_token_contract private transfer recursion', () => {
     const senderBalance = await asset.methods.balance_of_private(adminAddress).simulate({ from: adminAddress });
     expect(senderBalance).toEqual(expectedChange);
 
-    const events = await wallet.getPrivateEvents<Transfer>(
-      asset.address,
-      TokenContract.events.Transfer,
-      tx.blockNumber!,
-      1,
-      [account1Address],
-    );
+    const events = await wallet.getPrivateEvents<Transfer>(TokenContract.events.Transfer, {
+      contractAddress: asset.address,
+      fromBlock: tx.blockNumber!,
+      toBlock: tx.blockNumber! + 1,
+      recipients: [account1Address],
+    });
 
     expect(events[0]).toEqual({
       from: adminAddress,
