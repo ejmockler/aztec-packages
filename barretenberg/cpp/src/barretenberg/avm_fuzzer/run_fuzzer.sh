@@ -30,6 +30,7 @@ if [ "$COMMAND" = "list-targets" ]; then
     echo "  bitwise - Bitwise fuzzer (harness_bitwise_fuzzer)"
     echo "  ecc - ECC fuzzer (harness_ecc_fuzzer)"
     echo "  gt - Greater Than fuzzer (harness_gt_fuzzer)"
+    echo "  calldata - Calldata fuzzer (harness_gt_fuzzer)"
     exit 0
 fi
 
@@ -62,9 +63,10 @@ case "$FUZZER_ALIAS" in
     bitwise) FUZZER_TYPE="harness_bitwise_fuzzer" ;;
     ecc) FUZZER_TYPE="harness_ecc_fuzzer" ;;
     gt) FUZZER_TYPE="harness_gt_fuzzer" ;;
+    calldata) FUZZER_TYPE="harness_calldata_fuzzer" ;;
     *)
         echo "Error: Invalid fuzzer type '$FUZZER_ALIAS'"
-        echo "Valid options: 'avm', 'alu', 'bitwise', 'ecc' or 'gt'"
+        echo "Valid options: 'avm', 'alu', 'bitwise', 'ecc', 'gt', or 'calldata"
         exit 1
         ;;
 esac
