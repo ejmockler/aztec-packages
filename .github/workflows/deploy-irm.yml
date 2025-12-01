@@ -35,6 +35,9 @@ on:
       DOCKERHUB_PASSWORD:
         description: "Docker Hub password for building and publishing images"
         required: true
+      DOCKERHUB_USERNAME:
+        description: "Docker Hub username for building and publishing images"
+        required: true
   workflow_dispatch:
     inputs:
       network:
@@ -132,6 +135,7 @@ jobs:
       - name: Deploy IRM
         env:
           DOCKERHUB_PASSWORD: ${{ secrets.DOCKERHUB_PASSWORD }}
+          DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
         run: |
           echo "Deploying IRM to network: ${{ inputs.network }}"
           echo "Namespace to monitor: ${NAMESPACE}"

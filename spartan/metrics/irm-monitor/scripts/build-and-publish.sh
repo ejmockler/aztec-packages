@@ -20,7 +20,7 @@ if [ -z "${DOCKERHUB_PASSWORD:-}" ]; then
   exit 1
 fi
 
-echo $DOCKERHUB_PASSWORD | docker login -u aztecprotocolci --password-stdin
+echo $DOCKERHUB_PASSWORD | docker login -u ${DOCKERHUB_USERNAME:-aztecprotocolci} --password-stdin
 
 echo "Building image ${IMAGE}..."
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
