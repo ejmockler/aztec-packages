@@ -29,7 +29,7 @@ import {
   TxSimulationResult,
   UtilitySimulationResult,
 } from '@aztec/stdlib/tx';
-import type { ExecutionPayload } from '@aztec/stdlib/tx';
+import type { ExecutionPayload, InTx } from '@aztec/stdlib/tx';
 
 import { z } from 'zod';
 
@@ -148,18 +148,8 @@ export type PrivateEventFilter = {
 
 /**
  * Metadata about a private event
- * TODO(martin): refactor to:
- *  type InBlock = { blockNumber: number; blockHash: L2BlockHash; };
- *  type InTx = InBlock & { txHash: TxHash };
- *  type PrivateEventMetadata = InTx & { recipient: AztecAddress };
  */
-export type PrivateEventMetadata = {
-  /** Block number the event was included in */
-  blockNumber: number;
-  /** Block hash the event was included in */
-  blockHash: L2BlockHash;
-  /** Tx hash the event was emitted in */
-  txHash: TxHash;
+export type PrivateEventMetadata = InTx & {
   /** Event recipient */
   recipient: AztecAddress;
 };

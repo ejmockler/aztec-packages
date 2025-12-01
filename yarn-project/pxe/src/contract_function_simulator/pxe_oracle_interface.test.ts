@@ -5,7 +5,7 @@ import { KeyStore } from '@aztec/key-store';
 import { openTmpStore } from '@aztec/kv-store/lmdb-v2';
 import { EventSelector } from '@aztec/stdlib/abi';
 import { AztecAddress } from '@aztec/stdlib/aztec-address';
-import { L2BlockHash, randomInBlock } from '@aztec/stdlib/block';
+import { L2BlockHash, randomDataInBlock } from '@aztec/stdlib/block';
 import { CompleteAddress } from '@aztec/stdlib/contract';
 import { computeUniqueNoteHash, siloNoteHash, siloNullifier, siloPrivateLog } from '@aztec/stdlib/hash';
 import type { AztecNode } from '@aztec/stdlib/interfaces/client';
@@ -184,7 +184,7 @@ describe('PXEOracleInterface', () => {
       }
       aztecNode.getLogsByTags.mockReset();
       aztecNode.getTxEffect.mockResolvedValue({
-        ...randomInBlock(await TxEffect.random({ numNullifiers: 1 })),
+        ...randomDataInBlock(await TxEffect.random({ numNullifiers: 1 })),
         txIndexInBlock: 0,
       });
     });
@@ -638,7 +638,7 @@ describe('PXEOracleInterface', () => {
       // Mock note exists in tree
       aztecNode.findLeavesIndexes.mockImplementation((_blockNum, treeId, leaves) => {
         if (treeId === MerkleTreeId.NOTE_HASH_TREE && leaves[0].equals(uniqueNoteHash)) {
-          return Promise.resolve([randomInBlock(0n)]);
+          return Promise.resolve([randomDataInBlock(0n)]);
         }
         return Promise.resolve([undefined]);
       });
@@ -688,10 +688,10 @@ describe('PXEOracleInterface', () => {
       // Mock note exists and is nullified
       aztecNode.findLeavesIndexes.mockImplementation((_blockNum, treeId, leaves) => {
         if (treeId === MerkleTreeId.NOTE_HASH_TREE && leaves[0].equals(uniqueNoteHash)) {
-          return Promise.resolve([randomInBlock(0n)]);
+          return Promise.resolve([randomDataInBlock(0n)]);
         }
         if (treeId === MerkleTreeId.NULLIFIER_TREE && leaves[0].equals(siloedNullifier)) {
-          return Promise.resolve([randomInBlock(0n)]);
+          return Promise.resolve([randomDataInBlock(0n)]);
         }
         return Promise.resolve([undefined]);
       });
@@ -725,7 +725,7 @@ describe('PXEOracleInterface', () => {
       aztecNode.findLeavesIndexes.mockImplementation((blockNum, treeId, leaves) => {
         if (treeId === MerkleTreeId.NOTE_HASH_TREE && leaves[0].equals(uniqueNoteHash)) {
           if (typeof blockNum === 'number' && blockNum > syncedBlockNumber) {
-            return Promise.resolve([randomInBlock(0n)]);
+            return Promise.resolve([randomDataInBlock(0n)]);
           }
         }
         return Promise.resolve([undefined]);
@@ -758,11 +758,11 @@ describe('PXEOracleInterface', () => {
       // Mock note exists in synced blocks but nullifier only exists after
       aztecNode.findLeavesIndexes.mockImplementation((blockNum, treeId, leaves) => {
         if (treeId === MerkleTreeId.NOTE_HASH_TREE && leaves[0].equals(uniqueNoteHash)) {
-          return Promise.resolve([randomInBlock(0n)]);
+          return Promise.resolve([randomDataInBlock(0n)]);
         }
         if (treeId === MerkleTreeId.NULLIFIER_TREE && leaves[0].equals(siloedNullifier)) {
           if (typeof blockNum === 'number' && blockNum > syncedBlockNumber) {
-            return Promise.resolve([randomInBlock(0n)]);
+            return Promise.resolve([randomDataInBlock(0n)]);
           }
         }
         return Promise.resolve([undefined]);
@@ -1022,7 +1022,7 @@ describe('PXEOracleInterface', () => {
       await noteDataProvider.addNotes([noteDao], recipient);
 
       // Set up the nullifier in the merkle tree
-      const nullifierIndex = randomInBlock(123n);
+      const nullifierIndex = randomDataInBlock(123n);
       aztecNode.findLeavesIndexes.mockResolvedValue([nullifierIndex]);
 
       // Call the function under test
@@ -1078,7 +1078,7 @@ describe('PXEOracleInterface', () => {
       // Mock nullifier to only exist after synced block
       aztecNode.findLeavesIndexes.mockImplementation(blockNum => {
         if (typeof blockNum === 'number' && blockNum > syncedBlockNumber) {
-          return Promise.resolve([randomInBlock(0n)]);
+          return Promise.resolve([randomDataInBlock(0n)]);
         }
         return Promise.resolve([undefined]);
       });

@@ -19,7 +19,7 @@ import {
 } from '@aztec/stdlib/abi';
 import type { AuthWitness } from '@aztec/stdlib/auth-witness';
 import type { AztecAddress } from '@aztec/stdlib/aztec-address';
-import type { L2BlockHash } from '@aztec/stdlib/block';
+import type { InBlock } from '@aztec/stdlib/block';
 import {
   CompleteAddress,
   type ContractClassWithId,
@@ -40,6 +40,7 @@ import type { NotesFilter } from '@aztec/stdlib/note';
 import { NoteDao } from '@aztec/stdlib/note';
 import {
   type ContractOverrides,
+  type InTx,
   PrivateExecutionResult,
   PrivateSimulationResult,
   type ProvingTimings,
@@ -48,7 +49,6 @@ import {
   type SimulationTimings,
   Tx,
   TxExecutionRequest,
-  TxHash,
   TxProfileResult,
   TxProvingResult,
   TxSimulationResult,
@@ -81,11 +81,8 @@ import { SyncDataProvider } from './storage/sync_data_provider/sync_data_provide
 import { TaggingDataProvider } from './storage/tagging_data_provider/tagging_data_provider.js';
 import { Synchronizer } from './synchronizer/index.js';
 
-export type PrivateEvent = {
+export type PrivateEvent = InTx & {
   packedEvent: Fr[];
-  blockNumber: number;
-  blockHash: L2BlockHash;
-  txHash: TxHash;
   recipient: AztecAddress;
   eventSelector: EventSelector;
 };
