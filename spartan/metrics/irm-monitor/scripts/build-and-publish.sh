@@ -6,11 +6,11 @@ set -euo pipefail
 # Usage: ./build-and-publish.sh <tag>
 
 TAG=${1:-latest}
-IMAGE="spypsy/block-height-monitor:${TAG}"
+IMAGE="aztecprotocol/block-height-monitor:${TAG}"
 
 
 echo "Checking if ${IMAGE} exists on Docker Hub..."
-if curl -fsSL "https://hub.docker.com/v2/repositories/spypsy/block-height-monitor/tags/${TAG}" >/dev/null 2>&1; then
+if curl -fsSL "https://hub.docker.com/v2/repositories/aztecprotocol/block-height-monitor/tags/${TAG}" >/dev/null 2>&1; then
   echo "Image tag already exists: ${IMAGE}"
   exit 0
 fi
