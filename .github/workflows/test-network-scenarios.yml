@@ -4,6 +4,9 @@
 name: Test Network Scenarios
 
 on:
+  schedule:
+    # Run nightly at 04:30 UTC (after nightly tag creation)
+    - cron: "30 4 * * *"
   workflow_run:
     workflows: ["CI3"]
     types:
@@ -17,12 +20,14 @@ on:
         default: next
       docker_image:
         description: Complete docker image to use (e.g., aztecprotocol/aztec:some-tag)
-        required: true
+        required: false
         type: string
+        default: ""
       namespace:
         description: Kubernetes namespace to use (will be sanitized for k8s naming)
-        required: true
+        required: false
         type: string
+        default: ""
       env_file:
         description: Environment file to use from spartan/environments/
         required: false
@@ -62,9 +67,11 @@ jobs:
   deploy-and-test-scenarios:
     needs: check-should-run
     if: |
-      always() &&
-      ((github.event_name == 'workflow_run' && needs.check-should-run.outputs.should_run == 'true') ||
-      (github.event_name == 'workflow_dispatch'))
+      always() && (
+        (github.event_name == 'workflow_run' && needs.check-should-run.outputs.should_run == 'true') ||
+        (github.event_name == 'workflow_dispatch') ||
+        (github.event_name == 'schedule')
+      )
     runs-on: ubuntu-latest
     env:
       NETWORK_ENV_FILE: /tmp/network.env
@@ -97,14 +104,58 @@ jobs:
           echo "SEMVER=$semver" >> $GITHUB_ENV
           echo "MAJOR_VERSION=$major_version" >> $GITHUB_ENV
 
+      - name: Determine nightly docker image (schedule)
+        if: github.event_name == 'schedule'
+        run: |
+          current_version=$(jq -r '."."' .release-please-manifest.json)
+          today="$(date -u +%Y%m%d)"
+          prefix="${current_version}-nightly.${today}"
+          echo "Looking for Docker tags with prefix: $prefix"
+          all_names=$(curl -s 'https://registry.hub.docker.com/v2/repositories/aztecprotocol/aztec/tags/?page_size=100' | jq -r '.results[].name')
+          cand_amd64=$(echo "$all_names" | grep -E "^${prefix}(\.[0-9]+)?-amd64$" | sort -V | tail -1 || true)
+          cand_noarch=$(echo "$all_names" | grep -E "^${prefix}(\.[0-9]+)?$" | sort -V | tail -1 || true)
+          if [[ -n "$cand_amd64" ]]; then
+            DOCKER_IMAGE="aztecprotocol/aztec:${cand_amd64}"
+          elif [[ -n "$cand_noarch" ]]; then
+            DOCKER_IMAGE="aztecprotocol/aztec:${cand_noarch}"
+          else
+            echo "Error: No nightly docker image found for $prefix"
+            exit 1
+          fi
+          echo "DOCKER_IMAGE=$DOCKER_IMAGE" >> $GITHUB_ENV
+          echo "NAMESPACE=nightly-scenario" >> $GITHUB_ENV
+
       # For dispatch, set the dockerimage and the namespace from provided inputs
       - name: Set docker image from input
         if: github.event_name == 'workflow_dispatch'
         run: |
-          docker_image="${{ inputs.docker_image }}"
-          # Use the provided namespace, sanitized for k8s naming
-          namespace_id=$(echo "${{ inputs.namespace }}" | sed 's/[^a-z0-9-]/-/g' | cut -c1-20)
+          # Determine docker image: prefer provided input; else pick latest nightly for today
+          if [ -n "${{ inputs.docker_image }}" ]; then
+            docker_image="${{ inputs.docker_image }}"
+          else
+            current_version=$(jq -r '."."' .release-please-manifest.json)
+            today="$(date -u +%Y%m%d)"
+            prefix="${current_version}-nightly.${today}"
+            all_names=$(curl -s 'https://registry.hub.docker.com/v2/repositories/aztecprotocol/aztec/tags/?page_size=100' | jq -r '.results[].name')
+            cand_amd64=$(echo "$all_names" | grep -E "^${prefix}(\.[0-9]+)?-amd64$" | sort -V | tail -1 || true)
+            cand_noarch=$(echo "$all_names" | grep -E "^${prefix}(\.[0-9]+)?$" | sort -V | tail -1 || true)
+            if [[ -n "$cand_amd64" ]]; then
+              docker_image="aztecprotocol/aztec:${cand_amd64}"
+            elif [[ -n "$cand_noarch" ]]; then
+              docker_image="aztecprotocol/aztec:${cand_noarch}"
+            else
+              echo "Error: No nightly docker image found for $prefix"
+              exit 1
+            fi
+          fi
           echo "DOCKER_IMAGE=$docker_image" >> $GITHUB_ENV
+
+          # Determine namespace: prefer provided input; else default to nightly-scenario
+          raw_ns="${{ inputs.namespace }}"
+          if [ -z "$raw_ns" ]; then
+            raw_ns="nightly-scenario"
+          fi
+          namespace_id=$(echo "$raw_ns" | sed 's/[^a-z0-9-]/-/g' | cut -c1-20)
           echo "NAMESPACE_ID=$namespace_id" >> $GITHUB_ENV
 
       - name: Setup
@@ -221,6 +272,22 @@ jobs:
           comment-on-alert: false
           fail-on-alert: false
           max-items-in-chart: 100
+
+      - name: Cleanup namespace (nightly)
+        if: always() && github.event_name == 'schedule'
+        env:
+          SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
+          GOOGLE_APPLICATION_CREDENTIALS: ${{ env.GOOGLE_APPLICATION_CREDENTIALS }}
+          NAMESPACE: ${{ env.NAMESPACE }}
+          GCP_PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
+        run: |
+          # Auth and delete namespace created for nightly scenario
+          gcloud auth activate-service-account --key-file="$GOOGLE_APPLICATION_CREDENTIALS"
+          CLUSTER=$(grep '^CLUSTER=' "spartan/environments/next-scenario.env" | sed 's/CLUSTER=//')
+          GCP_REGION=$(grep '^GCP_REGION=' "spartan/environments/next-scenario.env" | sed 's/GCP_REGION=//')
+          gcloud components install gke-gcloud-auth-plugin -q || true
+          gcloud container clusters get-credentials "$CLUSTER" --region "$GCP_REGION" --project "$GCP_PROJECT_ID"
+          kubectl delete namespace "$NAMESPACE" --ignore-not-found=true
 
       - name: Notify Slack on failure
         if: failure() && github.event_name == 'workflow_run'

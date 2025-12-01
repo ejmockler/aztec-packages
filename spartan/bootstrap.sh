@@ -78,6 +78,22 @@ function network_test_cmds {
   echo $prefix $run_test_script simple src/spartan/smoke.test.ts
   echo $prefix $run_test_script simple src/spartan/transfer.test.ts
   echo $prefix $run_test_script simple src/spartan/slash_inactivity.test.ts
+  # Optional: run the full spartan suite by setting SPARTAN_ALL_TESTS=1
+  if [[ "${SPARTAN_ALL_TESTS:-}" == "1" ]]; then
+    echo $prefix $run_test_script simple src/spartan/4epochs.test.ts
+    echo $prefix $run_test_script simple src/spartan/gating-passive.test.ts
+    echo $prefix $run_test_script simple src/spartan/reorg.test.ts
+    echo $prefix $run_test_script simple src/spartan/1tps.test.ts
+    echo $prefix $run_test_script simple src/spartan/mempool_limit.test.ts
+    echo $prefix $run_test_script simple src/spartan/n_tps.test.ts
+    echo $prefix $run_test_script simple src/spartan/reqresp_effectiveness.test.ts
+    echo $prefix $run_test_script simple src/spartan/invalidate_blocks.test.ts
+    echo $prefix $run_test_script simple src/spartan/upgrade_governance_proposer.test.ts
+    echo $prefix $run_test_script simple src/spartan/upgrade_rollup_version.test.ts
+    echo $prefix $run_test_script simple src/spartan/upgrade_via_cli.test.ts
+    echo $prefix $run_test_script simple src/spartan/prover-node.test.ts
+    echo $prefix $run_test_script simple src/spartan/proving.test.ts
+  fi
 }
 
 function single_test {
