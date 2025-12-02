@@ -1,11 +1,13 @@
 pub mod map;
+pub mod owned_state_variable;
+pub mod owned;
 pub mod private_immutable;
 pub mod private_mutable;
 pub mod public_immutable;
 pub mod public_mutable;
 pub mod private_set;
 pub mod delayed_public_mutable;
-pub mod storage;
+pub mod state_variable;
 
 pub use crate::state_vars::delayed_public_mutable::DelayedPublicMutable;
 pub use crate::state_vars::map::Map;
