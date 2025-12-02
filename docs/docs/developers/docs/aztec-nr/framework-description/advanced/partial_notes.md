@@ -72,7 +72,7 @@ fn compute_partial_commitment(self, storage_slot: Field) -> Field {
 Here, we are creating a partial note commitment:
 
 ```
-partial_commitment = H(partial_commitment, value)
+partial_commitment = H(owner, randomness, storage_slot)
 ```
 
 **Phase 2: Note Completion (Public Execution)**
