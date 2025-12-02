@@ -40,6 +40,18 @@ field_t<Builder> logic<Builder>::create_logic_constraint(
     BB_ASSERT_LTE(num_bits, grumpkin::MAX_NO_WRAP_INTEGER_BIT_LENGTH);
     BB_ASSERT_GT(num_bits, 0U);
 
+    // Handle case when both inputs are constants - compute result natively
+    if (a.is_constant() && b.is_constant()) {
+        uint256_t a_native(a.get_value());
+        uint256_t b_native(b.get_value());
+        uint256_t max_value = (uint256_t(1) << num_bits) - 1;
+        // Assert inputs fit within num_bits (consistent with witness case where lookup enforces range)
+        BB_ASSERT_LTE(a_native, max_value);
+        BB_ASSERT_LTE(b_native, max_value);
+        uint256_t result = is_xor_gate ? (a_native ^ b_native) : (a_native & b_native);
+        return field_pt(bb::fr(result));
+    }
+
     if (a.is_constant() && !b.is_constant()) {
         Builder* ctx = b.get_context();
         uint256_t a_native(a.get_value());
