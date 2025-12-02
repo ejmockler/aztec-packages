@@ -9,7 +9,7 @@ import Image from "@theme/IdealImage";
 
 ## What are Partial Notes?
 
-Partial notes are notes created with incomplete data, usually during private execution, which can be completed later with additional information that becomes available later, usually during public execution.
+Partial notes are notes created with incomplete data, usually during private execution, which can be completed with additional information that becomes available later, usually during public execution.
 
 Let’s say, for example, I have a `UintNote`:
 
