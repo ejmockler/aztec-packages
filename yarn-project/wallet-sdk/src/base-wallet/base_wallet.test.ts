@@ -1,6 +1,6 @@
 import type { Account } from '@aztec/aztec.js/account';
 import type { AztecNode } from '@aztec/aztec.js/node';
-import type { Aliased } from '@aztec/aztec.js/wallet';
+import type { Aliased, PrivateEvent } from '@aztec/aztec.js/wallet';
 import { Fr } from '@aztec/foundation/fields';
 import { TokenContract, type Transfer } from '@aztec/noir-contracts.js/Token';
 import { PXE, type PackedPrivateEvent } from '@aztec/pxe/server';
@@ -72,10 +72,30 @@ describe('BaseWallet', () => {
     const transfer1Serialized: Fr[] = encodeTransfer(transfer1);
     const transfer2Serialized: Fr[] = encodeTransfer(transfer2);
 
-    pxe.getPrivateEvents.mockResolvedValue([
-      await privateEventFor(transfer1Serialized),
-      await privateEventFor(transfer2Serialized),
-    ]);
+    const packedPrivateEventTransfer1: PackedPrivateEvent = await privateEventFor(transfer1Serialized);
+    const packedPrivateEventTransfer2: PackedPrivateEvent = await privateEventFor(transfer2Serialized);
+
+    const privateEventTransfer1: PrivateEvent<Transfer> = {
+      event: transfer1,
+      metadata: {
+        l2BlockNumber: packedPrivateEventTransfer1.l2BlockNumber,
+        l2BlockHash: packedPrivateEventTransfer1.l2BlockHash,
+        txHash: packedPrivateEventTransfer1.txHash,
+        recipient: packedPrivateEventTransfer1.recipient,
+      },
+    };
+
+    const privateEventTransfer2: PrivateEvent<Transfer> = {
+      event: transfer2,
+      metadata: {
+        l2BlockNumber: packedPrivateEventTransfer2.l2BlockNumber,
+        l2BlockHash: packedPrivateEventTransfer2.l2BlockHash,
+        txHash: packedPrivateEventTransfer2.txHash,
+        recipient: packedPrivateEventTransfer2.recipient,
+      },
+    };
+
+    pxe.getPrivateEvents.mockResolvedValue([packedPrivateEventTransfer1, packedPrivateEventTransfer2]);
 
     const basicWallet = new BasicWallet(pxe, node);
 
@@ -86,6 +106,6 @@ describe('BaseWallet', () => {
       recipients: [await AztecAddress.random()],
     });
 
-    expect(events).toEqual([transfer1, transfer2]);
+    expect(events).toEqual([privateEventTransfer1, privateEventTransfer2]);
   });
 });

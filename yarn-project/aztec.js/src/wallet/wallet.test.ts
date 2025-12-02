@@ -5,6 +5,7 @@ import type { ContractArtifact, EventMetadataDefinition } from '@aztec/stdlib/ab
 import { EventSelector, FunctionSelector, FunctionType } from '@aztec/stdlib/abi';
 import { AuthWitness } from '@aztec/stdlib/auth-witness';
 import { AztecAddress } from '@aztec/stdlib/aztec-address';
+import { L2BlockHash } from '@aztec/stdlib/block';
 import type { ContractClassMetadata, ContractInstanceWithAddress, ContractMetadata } from '@aztec/stdlib/contract';
 import { PublicKeys } from '@aztec/stdlib/keys';
 import {
@@ -21,6 +22,7 @@ import type {
   BatchResults,
   BatchableMethods,
   BatchedMethod,
+  PrivateEvent,
   PrivateEventFilter,
   ProfileOptions,
   SendOptions,
@@ -339,8 +341,23 @@ class MockWallet implements Wallet {
     };
   }
 
-  getPrivateEvents<T>(_eventMetadata: EventMetadataDefinition, _filter: PrivateEventFilter): Promise<T[]> {
-    return Promise.resolve([{ field1: Fr.random() }] as T[]);
+  async getPrivateEvents<T>(
+    _eventMetadata: EventMetadataDefinition,
+    _filter: PrivateEventFilter,
+  ): Promise<PrivateEvent<T>[]> {
+    return Promise.resolve([
+      {
+        event: {
+          field1: Fr.random(),
+        },
+        metadata: {
+          l2BlockNumber: 1,
+          l2BlockHash: L2BlockHash.random(),
+          txHash: TxHash.random(),
+          recipient: await AztecAddress.random(),
+        },
+      },
+    ] as PrivateEvent<T>[]);
   }
 
   getTxReceipt(_txHash: TxHash): Promise<TxReceipt> {

@@ -604,7 +604,7 @@ describe('PXEOracleInterface', () => {
       const result = await privateEventDataProvider.getPrivateEvents(
         contractAddress,
         blockNumber,
-        1,
+        blockNumber + 1,
         [recipient.address],
         eventSelector,
       );

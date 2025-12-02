@@ -61,7 +61,7 @@ describe('PrivateEventDataProvider', () => {
     const events = await privateEventDataProvider.getPrivateEvents(
       contractAddress,
       l2BlockNumber,
-      1,
+      l2BlockNumber + 1,
       [recipient],
       eventSelector,
     );
@@ -92,7 +92,7 @@ describe('PrivateEventDataProvider', () => {
     const events = await privateEventDataProvider.getPrivateEvents(
       contractAddress,
       l2BlockNumber,
-      1,
+      l2BlockNumber + 1,
       [recipient],
       eventSelector,
     );
@@ -124,7 +124,7 @@ describe('PrivateEventDataProvider', () => {
     const events = await privateEventDataProvider.getPrivateEvents(
       contractAddress,
       l2BlockNumber,
-      1,
+      l2BlockNumber + 1,
       [recipient],
       eventSelector,
     );
@@ -155,8 +155,8 @@ describe('PrivateEventDataProvider', () => {
       msgContent,
       expectedEvent.txHash,
       1,
-      l2BlockNumber,
-      l2BlockHash,
+      expectedEvent.l2BlockNumber,
+      expectedEvent.l2BlockHash,
     );
     await privateEventDataProvider.storePrivateEventLog(
       contractAddress,
@@ -172,7 +172,7 @@ describe('PrivateEventDataProvider', () => {
     const events = await privateEventDataProvider.getPrivateEvents(
       contractAddress,
       150,
-      100,
+      150 + 100,
       [recipient],
       eventSelector,
     );
@@ -206,7 +206,7 @@ describe('PrivateEventDataProvider', () => {
     const events = await privateEventDataProvider.getPrivateEvents(
       contractAddress,
       l2BlockNumber,
-      1,
+      l2BlockNumber + 1,
       [recipient],
       eventSelector,
     );
@@ -217,7 +217,7 @@ describe('PrivateEventDataProvider', () => {
     const events = await privateEventDataProvider.getPrivateEvents(
       contractAddress,
       l2BlockNumber,
-      1,
+      l2BlockNumber + 1,
       [recipient],
       eventSelector,
     );
@@ -272,7 +272,7 @@ describe('PrivateEventDataProvider', () => {
       const events = await privateEventDataProvider.getPrivateEvents(
         contractAddress,
         0,
-        1000,
+        0 + 1000,
         [recipient],
         eventSelector,
       );
