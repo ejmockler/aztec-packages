@@ -5,17 +5,22 @@ import type { AztecAsyncArray, AztecAsyncKVStore, AztecAsyncMap } from '@aztec/k
 import type { EventSelector } from '@aztec/stdlib/abi';
 import type { AztecAddress } from '@aztec/stdlib/aztec-address';
 import { L2BlockHash } from '@aztec/stdlib/block';
-import { TxHash } from '@aztec/stdlib/tx';
+import { type InTx, TxHash } from '@aztec/stdlib/tx';
 
 import type { PackedPrivateEvent } from '../../pxe.js';
 
-interface PrivateEventEntry {
+type PrivateEventEntry = {
   msgContent: Buffer;
-  blockNumber: number;
-  blockHash: Buffer;
   eventCommitmentIndex: number;
+  l2BlockNumber: number;
+  l2BlockHash: Buffer;
   txHash: Buffer;
-}
+};
+
+type PrivateEventMetadata = InTx & {
+  contractAddress: AztecAddress;
+  recipient: AztecAddress;
+};
 
 /**
  * Stores decrypted private event logs.
@@ -40,24 +45,23 @@ export class PrivateEventDataProvider {
 
   /**
    * Store a private event log.
-   * @param contractAddress - The address of the contract that emitted the event.
-   * @param recipient - The recipient of the event.
    * @param eventSelector - The event selector of the event.
    * @param msgContent - The content of the event.
-   * @param txHash - The transaction hash of the event log.
    * @param eventCommitmentIndex - The index of the event commitment in the nullifier tree.
-   * @param blockNumber - The block number in which the event was emitted.
+   * @param metadata
+   *  contractAddress - The address of the contract that emitted the event.
+   *  recipient - The recipient of the event.
+   *  txHash - The transaction hash of the event log.
+   *  blockNumber - The block number in which the event was emitted.
    */
   storePrivateEventLog(
-    contractAddress: AztecAddress,
-    recipient: AztecAddress,
     eventSelector: EventSelector,
     msgContent: Fr[],
-    txHash: TxHash,
     eventCommitmentIndex: number,
-    blockNumber: number,
-    blockHash: L2BlockHash,
+    metadata: PrivateEventMetadata,
   ): Promise<void> {
+    const { contractAddress, recipient, txHash, l2BlockNumber, l2BlockHash } = metadata;
+
     return this.#store.transactionAsync(async () => {
       const key = `${contractAddress.toString()}_${recipient.toString()}_${eventSelector.toString()}`;
 
@@ -68,13 +72,13 @@ export class PrivateEventDataProvider {
         return;
       }
 
-      this.logger.verbose('storing private event log', { contractAddress, recipient, msgContent, blockNumber });
+      this.logger.verbose('storing private event log', { contractAddress, recipient, msgContent, l2BlockNumber });
 
       const index = await this.#eventLogs.lengthAsync();
       await this.#eventLogs.push({
         msgContent: serializeToBuffer(msgContent),
-        blockNumber,
-        blockHash: blockHash.toBuffer(),
+        l2BlockNumber,
+        l2BlockHash: l2BlockHash.toBuffer(),
         eventCommitmentIndex,
         txHash: txHash.toBuffer(),
       });
@@ -89,12 +93,14 @@ export class PrivateEventDataProvider {
 
   /**
    * Returns the private events given search parameters.
-   * @param contractAddress - The address of the contract to get events from.
-   * @param fromBlock - The block number to search from (inclusive).
-   * @param toBlock - The block number to search upto (exclusive).
-   * @param recipients - The addresses that decrypted the logs.
    * @param eventSelector - The event selector to filter by.
-   * @returns - The event log contents.
+   * @param filters - Filtering criteria:
+   *  contractAddress: The address of the contract to get events from.
+   *  fromBlock: The block number to search from (inclusive).
+   *  toBlock: The block number to search upto (exclusive).
+   *  recipients: - The addresses that decrypted the logs.
+   * @returns - The event log contents, augmented with metadata about
+   * the transaction and block it the event was included in .
    */
   public async getPrivateEvents(
     eventSelector: EventSelector,
@@ -113,7 +119,7 @@ export class PrivateEventDataProvider {
 
       for (const index of indices) {
         const entry = await this.#eventLogs.atAsync(index);
-        if (!entry || entry.blockNumber < filters.fromBlock || entry.blockNumber >= filters.toBlock) {
+        if (!entry || entry.l2BlockNumber < filters.fromBlock || entry.l2BlockNumber >= filters.toBlock) {
           continue;
         }
 
@@ -122,13 +128,13 @@ export class PrivateEventDataProvider {
         const numFields = entry.msgContent.length / Fr.SIZE_IN_BYTES;
         const msgContent = reader.readArray(numFields, Fr);
         const txHash = TxHash.fromBuffer(entry.txHash);
-        const l2BlockHash = L2BlockHash.fromBuffer(entry.blockHash);
+        const l2BlockHash = L2BlockHash.fromBuffer(entry.l2BlockHash);
 
         events.push({
           eventCommitmentIndex: entry.eventCommitmentIndex,
           event: {
             packedEvent: msgContent,
-            l2BlockNumber: entry.blockNumber,
+            l2BlockNumber: entry.l2BlockNumber,
             recipient,
             txHash,
             l2BlockHash,

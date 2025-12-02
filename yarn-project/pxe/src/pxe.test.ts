@@ -207,16 +207,13 @@ describe('PXE', () => {
         eventSelector,
       };
 
-      await privateEventDataProvider.storePrivateEventLog(
+      await privateEventDataProvider.storePrivateEventLog(eventSelector, event.packedEvent, index, {
         contractAddress,
         recipient,
-        eventSelector,
-        event.packedEvent,
-        event.txHash,
-        index,
+        txHash: event.txHash,
         l2BlockNumber,
         l2BlockHash,
-      );
+      });
 
       return event;
     }

@@ -816,14 +816,16 @@ export class PXEOracleInterface implements ExecutionDataProvider {
     }
 
     return this.privateEventDataProvider.storePrivateEventLog(
-      contractAddress,
-      recipient,
       selector,
       content,
-      txHash,
       Number(nullifierIndex.data), // Index of the event commitment in the nullifier tree
-      nullifierIndex.l2BlockNumber, // Block number in which the event was emitted
-      nullifierIndex.l2BlockHash, // Block hash in which the event was emitted
+      {
+        contractAddress,
+        recipient,
+        txHash,
+        l2BlockNumber: nullifierIndex.l2BlockNumber, // Block number in which the event was emitted
+        l2BlockHash: nullifierIndex.l2BlockHash, // Block hash in which the event was emitted
+      },
     );
   }
 

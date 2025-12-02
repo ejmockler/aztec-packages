@@ -48,16 +48,13 @@ describe('PrivateEventDataProvider', () => {
   });
 
   it('stores and retrieves private events', async () => {
-    await privateEventDataProvider.storePrivateEventLog(
+    await privateEventDataProvider.storePrivateEventLog(eventSelector, msgContent, eventCommitmentIndex, {
       contractAddress,
       recipient,
-      eventSelector,
-      msgContent,
       txHash,
-      eventCommitmentIndex,
       l2BlockNumber,
       l2BlockHash,
-    );
+    });
     const events = await privateEventDataProvider.getPrivateEvents(eventSelector, {
       contractAddress,
       fromBlock: l2BlockNumber,
@@ -68,26 +65,13 @@ describe('PrivateEventDataProvider', () => {
   });
 
   it('ignores duplicate events with same eventCommitmentIndex', async () => {
-    await privateEventDataProvider.storePrivateEventLog(
+    await privateEventDataProvider.storePrivateEventLog(eventSelector, msgContent, eventCommitmentIndex, {
       contractAddress,
       recipient,
-      eventSelector,
-      msgContent,
       txHash,
-      eventCommitmentIndex,
       l2BlockNumber,
       l2BlockHash,
-    );
-    await privateEventDataProvider.storePrivateEventLog(
-      contractAddress,
-      recipient,
-      eventSelector,
-      msgContent,
-      txHash,
-      eventCommitmentIndex,
-      l2BlockNumber,
-      l2BlockHash,
-    );
+    });
 
     const events = await privateEventDataProvider.getPrivateEvents(eventSelector, {
       contractAddress,
@@ -101,26 +85,21 @@ describe('PrivateEventDataProvider', () => {
 
   it('allows multiple events with same content but different eventCommitmentIndex', async () => {
     const otherEventCommitmentIndex = eventCommitmentIndex + 1;
-    await privateEventDataProvider.storePrivateEventLog(
+
+    await privateEventDataProvider.storePrivateEventLog(eventSelector, msgContent, eventCommitmentIndex, {
       contractAddress,
       recipient,
-      eventSelector,
-      msgContent,
       txHash,
-      eventCommitmentIndex,
       l2BlockNumber,
       l2BlockHash,
-    );
-    await privateEventDataProvider.storePrivateEventLog(
+    });
+    await privateEventDataProvider.storePrivateEventLog(eventSelector, msgContent, otherEventCommitmentIndex, {
       contractAddress,
       recipient,
-      eventSelector,
-      msgContent,
       txHash,
-      otherEventCommitmentIndex,
       l2BlockNumber,
       l2BlockHash,
-    );
+    });
 
     const events = await privateEventDataProvider.getPrivateEvents(eventSelector, {
       contractAddress,
@@ -139,36 +118,27 @@ describe('PrivateEventDataProvider', () => {
       l2BlockNumber: 200,
     };
 
-    await privateEventDataProvider.storePrivateEventLog(
+    await privateEventDataProvider.storePrivateEventLog(eventSelector, getRandomMsgContent(), 0, {
       contractAddress,
       recipient,
-      eventSelector,
-      getRandomMsgContent(),
-      TxHash.random(),
-      0,
-      100,
+      txHash: TxHash.random(),
+      l2BlockNumber: 100,
       l2BlockHash,
-    );
-    await privateEventDataProvider.storePrivateEventLog(
+    });
+    await privateEventDataProvider.storePrivateEventLog(eventSelector, msgContent, 1, {
       contractAddress,
       recipient,
-      eventSelector,
-      msgContent,
-      expectedEvent.txHash,
-      1,
-      expectedEvent.l2BlockNumber,
-      expectedEvent.l2BlockHash,
-    );
-    await privateEventDataProvider.storePrivateEventLog(
+      txHash: expectedEvent.txHash,
+      l2BlockNumber: expectedEvent.l2BlockNumber,
+      l2BlockHash: expectedEvent.l2BlockHash,
+    });
+    await privateEventDataProvider.storePrivateEventLog(eventSelector, getRandomMsgContent(), 2, {
       contractAddress,
       recipient,
-      eventSelector,
-      getRandomMsgContent(),
-      TxHash.random(),
-      2,
-      300,
+      txHash: TxHash.random(),
+      l2BlockNumber: 300,
       l2BlockHash,
-    );
+    });
 
     const events = await privateEventDataProvider.getPrivateEvents(eventSelector, {
       contractAddress,
@@ -182,26 +152,21 @@ describe('PrivateEventDataProvider', () => {
 
   it('filters events by recipient', async () => {
     const otherRecipient = await AztecAddress.random();
-    await privateEventDataProvider.storePrivateEventLog(
+
+    await privateEventDataProvider.storePrivateEventLog(eventSelector, msgContent, eventCommitmentIndex, {
       contractAddress,
       recipient,
-      eventSelector,
-      msgContent,
       txHash,
-      eventCommitmentIndex,
       l2BlockNumber,
       l2BlockHash,
-    );
-    await privateEventDataProvider.storePrivateEventLog(
+    });
+    await privateEventDataProvider.storePrivateEventLog(eventSelector, msgContent, eventCommitmentIndex + 1, {
       contractAddress,
-      otherRecipient,
-      eventSelector,
-      msgContent,
-      TxHash.random(),
-      eventCommitmentIndex + 1,
+      recipient: otherRecipient,
+      txHash: TxHash.random(),
       l2BlockNumber,
       l2BlockHash,
-    );
+    });
 
     const events = await privateEventDataProvider.getPrivateEvents(eventSelector, {
       contractAddress,
@@ -236,38 +201,29 @@ describe('PrivateEventDataProvider', () => {
     });
 
     it('returns events in order by eventCommitmentIndex', async () => {
-      await privateEventDataProvider.storePrivateEventLog(
+      await privateEventDataProvider.storePrivateEventLog(eventSelector, msgContent2, 1, {
         contractAddress,
         recipient,
-        eventSelector,
-        msgContent2,
-        TxHash.random(),
-        1, // eventCommitmentIndex
-        200,
+        txHash: TxHash.random(),
+        l2BlockNumber: 200,
         l2BlockHash,
-      );
+      });
 
-      await privateEventDataProvider.storePrivateEventLog(
+      await privateEventDataProvider.storePrivateEventLog(eventSelector, msgContent1, 0, {
         contractAddress,
         recipient,
-        eventSelector,
-        msgContent1,
-        TxHash.random(),
-        0, // eventCommitmentIndex
-        100,
+        txHash: TxHash.random(),
+        l2BlockNumber: 100,
         l2BlockHash,
-      );
+      });
 
-      await privateEventDataProvider.storePrivateEventLog(
+      await privateEventDataProvider.storePrivateEventLog(eventSelector, msgContent3, 2, {
         contractAddress,
         recipient,
-        eventSelector,
-        msgContent3,
-        TxHash.random(),
-        2, // eventCommitmentIndex
-        300,
+        txHash: TxHash.random(),
+        l2BlockNumber: 300,
         l2BlockHash,
-      );
+      });
 
       const events = await privateEventDataProvider.getPrivateEvents(eventSelector, {
         contractAddress,
