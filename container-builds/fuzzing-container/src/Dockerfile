@@ -83,5 +83,3 @@ COPY --from=builder /home/fuzzer/aztec-packages/barretenberg/cpp/build-fuzzing-c
 
 # Copy entrypoint script
 COPY entrypoint.sh .
-
-USER fuzzer
