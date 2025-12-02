@@ -6,7 +6,7 @@ import {
   NUMBER_OF_L1_L2_MESSAGES_PER_ROLLUP,
   NUM_BASE_PARITY_PER_ROOT_PARITY,
 } from '@aztec/constants';
-import { EpochNumber } from '@aztec/foundation/branded-types';
+import { BlockNumber, EpochNumber } from '@aztec/foundation/branded-types';
 import { padArrayEnd } from '@aztec/foundation/collection';
 import { AbortError } from '@aztec/foundation/error';
 import { Fr } from '@aztec/foundation/fields';
@@ -161,8 +161,8 @@ export class ProvingOrchestrator implements EpochProver {
     const lastBlockNumber = headerOfLastBlockInPreviousCheckpoint.globalVariables.blockNumber;
     const db = await this.dbProvider.fork(lastBlockNumber);
 
-    const firstBlockNumber = lastBlockNumber + 1;
-    this.dbs.set(firstBlockNumber, db);
+    const firstBlockNumber = BlockNumber(lastBlockNumber + 1);
+    this.dbs.set(Number(firstBlockNumber), db);
 
     // Get archive sibling path before any block in this checkpoint lands.
     const lastArchiveSiblingPath = await getLastSiblingPath(MerkleTreeId.ARCHIVE, db);
@@ -197,9 +197,9 @@ export class ProvingOrchestrator implements EpochProver {
    * @param totalNumTxs - The total number of txs in the block
    */
   @trackSpan('ProvingOrchestrator.startNewBlock', blockNumber => ({
-    [Attributes.BLOCK_NUMBER]: blockNumber,
+    [Attributes.BLOCK_NUMBER]: Number(blockNumber),
   }))
-  public async startNewBlock(blockNumber: number, timestamp: UInt64, totalNumTxs: number) {
+  public async startNewBlock(blockNumber: BlockNumber, timestamp: UInt64, totalNumTxs: number) {
     if (!this.provingState) {
       throw new Error('Empty epoch proving state. Call startNewEpoch before starting a block.');
     }
@@ -217,12 +217,12 @@ export class ProvingOrchestrator implements EpochProver {
     logger.info(`Starting block ${blockNumber} for slot ${constants.slotNumber}.`);
 
     // Fork the db only when it's not already set. The db for the first block is set in `startNewCheckpoint`.
-    if (!this.dbs.has(blockNumber)) {
+    if (!this.dbs.has(Number(blockNumber))) {
       // Fork world state at the end of the immediately previous block
-      const db = await this.dbProvider.fork(blockNumber - 1);
-      this.dbs.set(blockNumber, db);
+      const db = await this.dbProvider.fork(BlockNumber(Number(blockNumber) - 1));
+      this.dbs.set(Number(blockNumber), db);
     }
-    const db = this.dbs.get(blockNumber)!;
+    const db = this.dbs.get(Number(blockNumber))!;
 
     // Get archive snapshot and sibling path before any txs in this block lands.
     const lastArchiveTreeSnapshot = await getTreeSnapshot(MerkleTreeId.ARCHIVE, db);
@@ -278,7 +278,7 @@ export class ProvingOrchestrator implements EpochProver {
       return;
     }
 
-    const blockNumber = txs[0].globalVariables.blockNumber;
+    const blockNumber = BlockNumber(txs[0].globalVariables.blockNumber);
     const provingState = this.provingState.getBlockProvingStateByBlockNumber(blockNumber!);
     if (!provingState) {
       throw new Error(`Proving state for block ${blockNumber} not found. Call startNewBlock first.`);
@@ -296,7 +296,7 @@ export class ProvingOrchestrator implements EpochProver {
 
     logger.info(`Adding ${txs.length} transactions to block ${blockNumber}`);
 
-    const db = this.dbs.get(blockNumber)!;
+    const db = this.dbs.get(Number(blockNumber))!;
     const lastArchive = provingState.lastArchiveTreeSnapshot;
     const newL1ToL2MessageTreeSnapshot = provingState.newL1ToL2MessageTreeSnapshot;
     const spongeBlobState = provingState.getStartSpongeBlob().clone();
@@ -388,10 +388,10 @@ export class ProvingOrchestrator implements EpochProver {
    * Marks the block as completed.
    * Computes the block header and updates the archive tree.
    */
-  @trackSpan('ProvingOrchestrator.setBlockCompleted', (blockNumber: number) => ({
-    [Attributes.BLOCK_NUMBER]: blockNumber,
+  @trackSpan('ProvingOrchestrator.setBlockCompleted', (blockNumber: BlockNumber) => ({
+    [Attributes.BLOCK_NUMBER]: Number(blockNumber),
   }))
-  public async setBlockCompleted(blockNumber: number, expectedHeader?: BlockHeader): Promise<BlockHeader> {
+  public async setBlockCompleted(blockNumber: BlockNumber, expectedHeader?: BlockHeader): Promise<BlockHeader> {
     const provingState = this.provingState?.getBlockProvingStateByBlockNumber(blockNumber);
     if (!provingState) {
       throw new Error(`Block proving state for ${blockNumber} not found`);

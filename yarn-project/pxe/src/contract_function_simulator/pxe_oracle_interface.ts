@@ -1,4 +1,5 @@
 import type { L1_TO_L2_MSG_TREE_HEIGHT } from '@aztec/constants';
+import { BlockNumber } from '@aztec/foundation/branded-types';
 import { timesParallel } from '@aztec/foundation/collection';
 import { Fr, Point } from '@aztec/foundation/fields';
 import { createLogger } from '@aztec/foundation/log';
@@ -699,9 +700,9 @@ export class PXEOracleInterface implements ExecutionDataProvider {
       noteHash,
       siloedNullifier,
       txHash,
-      uniqueNoteHashTreeIndexInBlock?.l2BlockNumber,
-      uniqueNoteHashTreeIndexInBlock?.l2BlockHash.toString(),
-      uniqueNoteHashTreeIndexInBlock?.data,
+      BlockNumber(uniqueNoteHashTreeIndexInBlock.l2BlockNumber),
+      uniqueNoteHashTreeIndexInBlock.l2BlockHash.toString(),
+      uniqueNoteHashTreeIndexInBlock.data,
     );
 
     // The note was found by `recipient`, so we use that as the scope when storing the note.

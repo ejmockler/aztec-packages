@@ -1,5 +1,5 @@
 import { EpochCache } from '@aztec/epoch-cache';
-import { SlotNumber } from '@aztec/foundation/branded-types';
+import { BlockNumber, SlotNumber } from '@aztec/foundation/branded-types';
 import { merge, pick } from '@aztec/foundation/collection';
 import { type Logger, createLogger } from '@aztec/foundation/log';
 import {
@@ -130,7 +130,7 @@ export class AttestationsBlockWatcher extends (EventEmitter as new () => Watcher
 
   private slashProposer(validationResult: ValidateBlockNegativeResult) {
     const { reason, block } = validationResult;
-    const blockNumber = block.blockNumber;
+    const blockNumber: BlockNumber = BlockNumber(block.blockNumber);
     const slot = SlotNumber(block.slotNumber);
     const proposer = this.epochCache.getProposerFromEpochCommittee(validationResult, slot);
 

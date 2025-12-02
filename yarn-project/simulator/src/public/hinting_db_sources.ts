@@ -593,6 +593,7 @@ export class HintingMerkleWriteOperations implements MerkleTreeWriteOperations {
     return await this.db.findLeafIndicesAfter(treeId, values, startIndex);
   }
 
+  // TODO: Update return type to (BlockNumber | undefined)[] once MerkleTreeWriteOperations interface in stdlib is updated
   public async getBlockNumbersForLeafIndices<ID extends MerkleTreeId>(
     treeId: ID,
     leafIndices: bigint[],

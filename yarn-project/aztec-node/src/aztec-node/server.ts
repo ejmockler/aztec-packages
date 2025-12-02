@@ -17,7 +17,7 @@ import {
   createEthereumChain,
   getPublicClient,
 } from '@aztec/ethereum';
-import { SlotNumber } from '@aztec/foundation/branded-types';
+import { BlockNumber, SlotNumber } from '@aztec/foundation/branded-types';
 import { compactArray, pick } from '@aztec/foundation/collection';
 import { EthAddress } from '@aztec/foundation/eth-address';
 import { Fr } from '@aztec/foundation/fields';
@@ -550,7 +550,7 @@ export class AztecNodeService implements AztecNode, AztecNodeAdmin, Traceable {
    * @returns The requested block.
    */
   public async getBlock(number: L2BlockNumber): Promise<L2Block | undefined> {
-    const blockNumber = number === 'latest' ? await this.getBlockNumber() : number;
+    const blockNumber = number === 'latest' ? await this.getBlockNumber() : (number as BlockNumber);
     return await this.blockSource.getBlock(blockNumber);
   }
 
@@ -580,11 +580,11 @@ export class AztecNodeService implements AztecNode, AztecNodeAdmin, Traceable {
    * @param limit - The maximum number of blocks to obtain.
    * @returns The blocks requested.
    */
-  public async getBlocks(from: number, limit: number): Promise<L2Block[]> {
+  public async getBlocks(from: BlockNumber, limit: number): Promise<L2Block[]> {
     return (await this.blockSource.getBlocks(from, limit)) ?? [];
   }
 
-  public async getPublishedBlocks(from: number, limit: number): Promise<PublishedL2Block[]> {
+  public async getPublishedBlocks(from: BlockNumber, limit: number): Promise<PublishedL2Block[]> {
     return (await this.blockSource.getPublishedBlocks(from, limit)) ?? [];
   }
 
@@ -608,12 +608,12 @@ export class AztecNodeService implements AztecNode, AztecNodeAdmin, Traceable {
    * Method to fetch the latest block number synchronized by the node.
    * @returns The block number.
    */
-  public async getBlockNumber(): Promise<number> {
-    return await this.blockSource.getBlockNumber();
+  public async getBlockNumber(): Promise<BlockNumber> {
+    return BlockNumber(await this.blockSource.getBlockNumber());
   }
 
-  public async getProvenBlockNumber(): Promise<number> {
-    return await this.blockSource.getProvenBlockNumber();
+  public async getProvenBlockNumber(): Promise<BlockNumber> {
+    return BlockNumber(await this.blockSource.getProvenBlockNumber());
   }
 
   /**
@@ -654,7 +654,7 @@ export class AztecNodeService implements AztecNode, AztecNodeAdmin, Traceable {
    * @param limit - The maximum number of blocks to retrieve logs from.
    * @returns An array of private logs from the specified range of blocks.
    */
-  public getPrivateLogs(from: number, limit: number): Promise<PrivateLog[]> {
+  public getPrivateLogs(from: BlockNumber, limit: number): Promise<PrivateLog[]> {
     return this.logsSource.getPrivateLogs(from, limit);
   }
 
@@ -847,7 +847,7 @@ export class AztecNodeService implements AztecNode, AztecNodeAdmin, Traceable {
         return undefined;
       }
       return {
-        l2BlockNumber: Number(blockNumber),
+        l2BlockNumber: BlockNumber(Number(blockNumber)),
         l2BlockHash: L2BlockHash.fromField(blockHash),
         data: index,
       };
@@ -927,9 +927,9 @@ export class AztecNodeService implements AztecNode, AztecNodeAdmin, Traceable {
     return [witness.index, witness.path];
   }
 
-  public async getL1ToL2MessageBlock(l1ToL2Message: Fr): Promise<number | undefined> {
+  public async getL1ToL2MessageBlock(l1ToL2Message: Fr): Promise<BlockNumber | undefined> {
     const messageIndex = await this.l1ToL2MessageSource.getL1ToL2MessageIndex(l1ToL2Message);
-    return messageIndex ? InboxLeaf.l2BlockFromIndex(messageIndex) : undefined;
+    return messageIndex ? BlockNumber(InboxLeaf.l2BlockFromIndex(messageIndex)) : undefined;
   }
 
   /**
@@ -948,7 +948,9 @@ export class AztecNodeService implements AztecNode, AztecNodeAdmin, Traceable {
    * @returns The L2 to L1 messages (undefined if the block number is not found).
    */
   public async getL2ToL1Messages(blockNumber: L2BlockNumber): Promise<Fr[][] | undefined> {
-    const block = await this.blockSource.getBlock(blockNumber === 'latest' ? await this.getBlockNumber() : blockNumber);
+    const block = await this.blockSource.getBlock(
+      blockNumber === 'latest' ? await this.getBlockNumber() : (blockNumber as BlockNumber),
+    );
     return block?.body.txEffects.map(txEffect => txEffect.l2ToL1Msgs);
   }
 
@@ -1084,9 +1086,10 @@ export class AztecNodeService implements AztecNode, AztecNodeAdmin, Traceable {
    * @returns The current committed block header.
    */
   public async getBlockHeader(blockNumber: L2BlockNumber = 'latest'): Promise<BlockHeader | undefined> {
-    return blockNumber === 0 || (blockNumber === 'latest' && (await this.blockSource.getBlockNumber()) === 0)
+    return blockNumber === BlockNumber(0) ||
+      (blockNumber === 'latest' && (await this.blockSource.getBlockNumber()) === BlockNumber(0))
       ? this.worldStateSynchronizer.getCommitted().getInitialHeader()
-      : this.blockSource.getBlockHeader(blockNumber);
+      : this.blockSource.getBlockHeader(blockNumber === 'latest' ? blockNumber : (blockNumber as BlockNumber));
   }
 
   /**
@@ -1130,7 +1133,7 @@ export class AztecNodeService implements AztecNode, AztecNodeAdmin, Traceable {
     }
 
     const txHash = tx.getTxHash();
-    const blockNumber = (await this.blockSource.getBlockNumber()) + 1;
+    const blockNumber = BlockNumber((await this.blockSource.getBlockNumber()) + 1);
 
     // If sequencer is not initialized, we just set these values to zero for simulation.
     const coinbase = EthAddress.ZERO;
@@ -1195,7 +1198,7 @@ export class AztecNodeService implements AztecNode, AztecNodeAdmin, Traceable {
 
     // We accept transactions if they are not expired by the next slot (checked based on the IncludeByTimestamp field)
     const { ts: nextSlotTimestamp } = this.epochCache.getEpochAndSlotInNextL1Slot();
-    const blockNumber = (await this.blockSource.getBlockNumber()) + 1;
+    const blockNumber = BlockNumber((await this.blockSource.getBlockNumber()) + 1);
     const validator = createValidatorForAcceptingTxs(db, this.contractDataSource, verifier, {
       timestamp: nextSlotTimestamp,
       blockNumber,
@@ -1302,7 +1305,7 @@ export class AztecNodeService implements AztecNode, AztecNodeAdmin, Traceable {
     return Promise.resolve();
   }
 
-  public async rollbackTo(targetBlock: number, force?: boolean): Promise<void> {
+  public async rollbackTo(targetBlock: BlockNumber, force?: boolean): Promise<void> {
     const archiver = this.blockSource as Archiver;
     if (!('rollbackTo' in archiver)) {
       throw new Error('Archiver implementation does not support rollbacks.');
@@ -1323,7 +1326,7 @@ export class AztecNodeService implements AztecNode, AztecNodeAdmin, Traceable {
       this.log.info(`Pausing archiver and world state sync to start rollback`);
       await archiver.stop();
       await this.worldStateSynchronizer.stopSync();
-      const currentBlock = await archiver.getBlockNumber();
+      const currentBlock = BlockNumber(await archiver.getBlockNumber());
       const blocksToUnwind = currentBlock - targetBlock;
       this.log.info(`Unwinding ${count(blocksToUnwind, 'block')} from L2 block ${currentBlock} to ${targetBlock}`);
       await archiver.rollbackTo(targetBlock);
@@ -1379,7 +1382,7 @@ export class AztecNodeService implements AztecNode, AztecNodeAdmin, Traceable {
       throw new Error('Invalid block number to get world state for: ' + blockNumber);
     }
 
-    let blockSyncedTo: number = 0;
+    let blockSyncedTo: BlockNumber = BlockNumber(0);
     try {
       // Attempt to sync the world state if necessary
       blockSyncedTo = await this.#syncWorldState();
@@ -1393,7 +1396,7 @@ export class AztecNodeService implements AztecNode, AztecNodeAdmin, Traceable {
       return this.worldStateSynchronizer.getCommitted();
     } else if (blockNumber <= blockSyncedTo) {
       this.log.debug(`Using snapshot for block ${blockNumber}, world state synced upto ${blockSyncedTo}`);
-      return this.worldStateSynchronizer.getSnapshot(blockNumber);
+      return this.worldStateSynchronizer.getSnapshot(blockNumber as BlockNumber);
     } else {
       throw new Error(`Block ${blockNumber} not yet synced`);
     }
@@ -1403,8 +1406,8 @@ export class AztecNodeService implements AztecNode, AztecNodeAdmin, Traceable {
    * Ensure we fully sync the world state
    * @returns A promise that fulfils once the world state is synced
    */
-  async #syncWorldState(): Promise<number> {
-    const blockSourceHeight = await this.blockSource.getBlockNumber();
-    return this.worldStateSynchronizer.syncImmediate(blockSourceHeight);
+  async #syncWorldState(): Promise<BlockNumber> {
+    const blockSourceHeight = BlockNumber(await this.blockSource.getBlockNumber());
+    return BlockNumber(await this.worldStateSynchronizer.syncImmediate(blockSourceHeight));
   }
 }

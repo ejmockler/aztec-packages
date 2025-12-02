@@ -2,7 +2,7 @@ import { L2Block } from '@aztec/aztec.js/block';
 import { BLOBS_PER_CHECKPOINT, FIELDS_PER_BLOB, INITIAL_L2_BLOCK_NUM } from '@aztec/constants';
 import type { EpochCache } from '@aztec/epoch-cache';
 import { FormattedViemError, NoCommitteeError, type RollupContract } from '@aztec/ethereum';
-import { CheckpointNumber, EpochNumber, SlotNumber } from '@aztec/foundation/branded-types';
+import { BlockNumber, CheckpointNumber, EpochNumber, SlotNumber } from '@aztec/foundation/branded-types';
 import { omit, pick } from '@aztec/foundation/collection';
 import { randomInt } from '@aztec/foundation/crypto';
 import { EthAddress } from '@aztec/foundation/eth-address';
@@ -73,7 +73,7 @@ export type SequencerEvents = {
     sentActions?: Action[];
     expiredActions?: Action[];
   }) => void;
-  ['block-published']: (args: { blockNumber: number; slot: number }) => void;
+  ['block-published']: (args: { blockNumber: BlockNumber; slot: number }) => void;
 };
 
 /**
@@ -281,7 +281,7 @@ export class Sequencer extends (EventEmitter as new () => TypedEventEmitter<Sequ
     }
 
     const chainTipArchive = syncedTo.archive;
-    const newBlockNumber = syncedTo.blockNumber + 1;
+    const newBlockNumber = BlockNumber(syncedTo.blockNumber + 1);
 
     const syncLogData = {
       now,
@@ -468,7 +468,7 @@ export class Sequencer extends (EventEmitter as new () => TypedEventEmitter<Sequ
   private async tryBuildBlockAndEnqueuePublish(
     slot: SlotNumber,
     proposer: EthAddress | undefined,
-    newBlockNumber: number,
+    newBlockNumber: BlockNumber,
     publisher: SequencerPublisher,
     newGlobalVariables: GlobalVariables,
     chainTipArchive: Fr,
@@ -924,7 +924,7 @@ export class Sequencer extends (EventEmitter as new () => TypedEventEmitter<Sequ
   protected async checkSync(args: { ts: bigint; slot: SlotNumber }): Promise<
     | {
         block?: L2Block;
-        blockNumber: number;
+        blockNumber: BlockNumber;
         archive: Fr;
         l1Timestamp: bigint;
         pendingChainValidationStatus: ValidateBlockResult;
@@ -976,7 +976,7 @@ export class Sequencer extends (EventEmitter as new () => TypedEventEmitter<Sequ
     const blockNumber = worldState.number;
     if (blockNumber < INITIAL_L2_BLOCK_NUM) {
       const archive = new Fr((await this.worldState.getCommitted().getTreeInfo(MerkleTreeId.ARCHIVE)).root);
-      return { blockNumber: INITIAL_L2_BLOCK_NUM - 1, archive, l1Timestamp, pendingChainValidationStatus };
+      return { blockNumber: BlockNumber(INITIAL_L2_BLOCK_NUM - 1), archive, l1Timestamp, pendingChainValidationStatus };
     }
 
     const block = await this.l2BlockSource.getBlock(blockNumber);
@@ -988,7 +988,7 @@ export class Sequencer extends (EventEmitter as new () => TypedEventEmitter<Sequ
 
     return {
       block,
-      blockNumber: block.number,
+      blockNumber: BlockNumber(block.number),
       archive: block.archive.root,
       l1Timestamp,
       pendingChainValidationStatus,

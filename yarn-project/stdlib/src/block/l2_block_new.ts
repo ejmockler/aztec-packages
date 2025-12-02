@@ -1,4 +1,5 @@
 import { type BlockBlobData, encodeBlockBlobData } from '@aztec/blob-lib/encoding';
+import { BlockNumber } from '@aztec/foundation/branded-types';
 import { Fr } from '@aztec/foundation/fields';
 import { BufferReader, serializeToBuffer } from '@aztec/foundation/serialize';
 
@@ -24,7 +25,7 @@ export class L2BlockNew {
     private blockHash: Fr | undefined = undefined,
   ) {}
 
-  get number(): number {
+  get number(): BlockNumber {
     return this.header.globalVariables.blockNumber;
   }
 
@@ -112,7 +113,7 @@ export class L2BlockNew {
    * @returns The L2 block.
    */
   static async random(
-    blockNumber: number,
+    blockNumber: BlockNumber,
     {
       txsPerBlock = 1,
       txOptions = {},

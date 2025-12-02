@@ -1,5 +1,5 @@
 import { RollupContract } from '@aztec/ethereum';
-import { CheckpointNumber, EpochNumber } from '@aztec/foundation/branded-types';
+import { BlockNumber, CheckpointNumber, EpochNumber } from '@aztec/foundation/branded-types';
 import { timesParallel } from '@aztec/foundation/collection';
 import { EthAddress } from '@aztec/foundation/eth-address';
 import { promiseWithResolvers } from '@aztec/foundation/promise';
@@ -119,10 +119,10 @@ describe('prover-node', () => {
     worldState.status.mockResolvedValue({
       state: WorldStateRunningState.RUNNING,
       syncSummary: {
-        latestBlockNumber: 1,
+        latestBlockNumber: BlockNumber(1),
         latestBlockHash: '',
-        finalizedBlockNumber: 0,
-        oldestHistoricBlockNumber: 0,
+        finalizedBlockNumber: BlockNumber(0),
+        oldestHistoricBlockNumber: BlockNumber(0),
         treesAreSynched: true,
       },
     });
@@ -138,7 +138,7 @@ describe('prover-node', () => {
       async i =>
         await Checkpoint.random(CheckpointNumber(i + 1), { numBlocks: 1, startBlockNumber: startBlockNumber + i }),
     );
-    previousBlockHeader = BlockHeader.random({ blockNumber: startBlockNumber - 1 });
+    previousBlockHeader = BlockHeader.random({ blockNumber: BlockNumber(startBlockNumber - 1) });
     lastPublishedCheckpoint = {
       checkpoint: checkpoints.at(-1)!,
       attestations: [CommitteeAttestation.random()],
@@ -149,9 +149,9 @@ describe('prover-node', () => {
     l2BlockSource.getCheckpointsForEpoch.mockResolvedValue(checkpoints);
     l2BlockSource.getPublishedCheckpoints.mockResolvedValue([lastPublishedCheckpoint]);
     l2BlockSource.getL2Tips.mockResolvedValue({
-      latest: { number: checkpoints.at(-1)!.number, hash: checkpoints.at(-1)!.hash().toString() },
-      proven: { number: 0, hash: undefined },
-      finalized: { number: 0, hash: undefined },
+      latest: { number: BlockNumber(checkpoints.at(-1)!.number), hash: checkpoints.at(-1)!.hash().toString() },
+      proven: { number: BlockNumber(0), hash: undefined },
+      finalized: { number: BlockNumber(0), hash: undefined },
     });
     l2BlockSource.getBlockHeader.mockImplementation(number =>
       Promise.resolve(number === checkpoints[0].blocks[0].number - 1 ? previousBlockHeader : undefined),

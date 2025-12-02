@@ -1,3 +1,4 @@
+import { BlockNumber } from '@aztec/foundation/branded-types';
 import { Fr } from '@aztec/foundation/fields';
 import { AztecLMDBStoreV2, openTmpStore } from '@aztec/kv-store/lmdb-v2';
 import { AztecAddress } from '@aztec/stdlib/aztec-address';
@@ -41,7 +42,7 @@ describe('NoteDataProvider', () => {
       contractAddress: overrides.contractAddress ?? CONTRACT_A,
       storageSlot: overrides.storageSlot ?? SLOT_X,
       index: overrides.index ?? 0n,
-      l2BlockNumber: overrides.l2BlockNumber ?? 1,
+      l2BlockNumber: overrides.l2BlockNumber ?? BlockNumber(1),
       siloedNullifier: overrides.siloedNullifier ?? Fr.random(),
       ...overrides,
     });
@@ -492,10 +493,10 @@ describe('NoteDataProvider', () => {
 
     describe('rewind nullifications happy path', () => {
       async function setupRollbackScenario() {
-        const noteBlock1 = await mkNote({ index: 1n, l2BlockNumber: 1 }); // Nullified at block 2
-        const noteBlock2 = await mkNote({ index: 2n, l2BlockNumber: 2 }); // Never nullified
-        const noteBlock3 = await mkNote({ index: 3n, l2BlockNumber: 3 }); // Nullified at block 4
-        const noteBlock5 = await mkNote({ index: 5n, l2BlockNumber: 5 }); // Created after rollback block 3
+        const noteBlock1 = await mkNote({ index: 1n, l2BlockNumber: BlockNumber(1) }); // Nullified at block 2
+        const noteBlock2 = await mkNote({ index: 2n, l2BlockNumber: BlockNumber(2) }); // Never nullified
+        const noteBlock3 = await mkNote({ index: 3n, l2BlockNumber: BlockNumber(3) }); // Nullified at block 4
+        const noteBlock5 = await mkNote({ index: 5n, l2BlockNumber: BlockNumber(5) }); // Created after rollback block 3
 
         await provider.addNotes([noteBlock1, noteBlock2, noteBlock3, noteBlock5], SCOPE_1);
 
@@ -553,7 +554,7 @@ describe('NoteDataProvider', () => {
 
     describe('rewind nullifications edge cases', () => {
       it('handles rollback when blockNumber equals synchedBlockNumber', async () => {
-        const note = await mkNote({ index: 10n, l2BlockNumber: 5 });
+        const note = await mkNote({ index: 10n, l2BlockNumber: BlockNumber(5) });
         await provider.addNotes([note], SCOPE_1);
 
         const nullifiers = [
@@ -580,7 +581,7 @@ describe('NoteDataProvider', () => {
       });
 
       it('handles rollback when synchedBlockNumber < blockNumber', async () => {
-        const note = await mkNote({ index: 20n, l2BlockNumber: 3 });
+        const note = await mkNote({ index: 20n, l2BlockNumber: BlockNumber(3) });
         await provider.addNotes([note], SCOPE_1);
 
         const nullifiers = [
@@ -606,8 +607,8 @@ describe('NoteDataProvider', () => {
       });
 
       it('handles rollback with a large block gap', async () => {
-        const note1 = await mkNote({ index: 30n, l2BlockNumber: 5 });
-        const note2 = await mkNote({ index: 31n, l2BlockNumber: 10 });
+        const note1 = await mkNote({ index: 30n, l2BlockNumber: BlockNumber(5) });
+        const note2 = await mkNote({ index: 31n, l2BlockNumber: BlockNumber(10) });
         await provider.addNotes([note1, note2], SCOPE_1);
 
         const nullifiers = [

@@ -9,7 +9,7 @@ import { EpochCache } from '@aztec/epoch-cache';
 import { DefaultL1ContractsConfig, type ExtendedViemWalletClient, createExtendedL1Client } from '@aztec/ethereum';
 import { RollupContract } from '@aztec/ethereum/contracts';
 import { ChainMonitor, DelayedTxUtils, type Delayer, waitUntilL1Timestamp, withDelayer } from '@aztec/ethereum/test';
-import { CheckpointNumber, EpochNumber } from '@aztec/foundation/branded-types';
+import { BlockNumber, CheckpointNumber, EpochNumber } from '@aztec/foundation/branded-types';
 import { SecretValue } from '@aztec/foundation/config';
 import { randomBytes } from '@aztec/foundation/crypto';
 import { withLogNameSuffix } from '@aztec/foundation/log';
@@ -324,7 +324,7 @@ export class EpochsTestContext {
   }
 
   /** Waits for the aztec node to sync to the target block number. */
-  public async waitForNodeToSync(blockNumber: number, type: 'proven' | 'finalized' | 'historic') {
+  public async waitForNodeToSync(blockNumber: BlockNumber, type: 'proven' | 'finalized' | 'historic') {
     const waitTime = ARCHIVER_POLL_INTERVAL + WORLD_STATE_BLOCK_CHECK_INTERVAL;
     let synched = false;
     while (!synched) {

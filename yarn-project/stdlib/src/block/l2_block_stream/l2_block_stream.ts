@@ -1,3 +1,4 @@
+import { BlockNumber } from '@aztec/foundation/branded-types';
 import { AbortError } from '@aztec/foundation/error';
 import { createLogger } from '@aztec/foundation/log';
 import { RunningPromise } from '@aztec/foundation/running-promise';
@@ -74,7 +75,7 @@ export class L2BlockStream {
       }
 
       if (latestBlockNumber < localTips.latest.number) {
-        latestBlockNumber = Math.min(latestBlockNumber, sourceTips.latest.number); // see #13471
+        latestBlockNumber = BlockNumber(Math.min(latestBlockNumber, sourceTips.latest.number)); // see #13471
         const hash = sourceCache.get(latestBlockNumber) ?? (await this.getBlockHashFromSource(latestBlockNumber));
         if (latestBlockNumber !== 0 && !hash) {
           throw new Error(`Block hash not found in block source for block number ${latestBlockNumber}`);
@@ -85,7 +86,7 @@ export class L2BlockStream {
 
       // If we are just starting, use the starting block number from the options.
       if (latestBlockNumber === 0 && this.opts.startingBlock !== undefined) {
-        latestBlockNumber = Math.max(this.opts.startingBlock - 1, 0);
+        latestBlockNumber = BlockNumber(Math.max(this.opts.startingBlock - 1, 0));
       }
 
       // Only log this entry once (for sanity)
@@ -108,7 +109,11 @@ export class L2BlockStream {
       while (nextBlockNumber <= sourceTips.latest.number) {
         const limit = Math.min(this.opts.batchSize ?? 50, sourceTips.latest.number - nextBlockNumber + 1);
         this.log.trace(`Requesting blocks from ${nextBlockNumber} limit ${limit} proven=${this.opts.proven}`);
-        const blocks = await this.l2BlockSource.getPublishedBlocks(nextBlockNumber, limit, this.opts.proven);
+        const blocks = await this.l2BlockSource.getPublishedBlocks(
+          BlockNumber(nextBlockNumber),
+          limit,
+          this.opts.proven,
+        );
         if (blocks.length === 0) {
           break;
         }
@@ -156,7 +161,7 @@ export class L2BlockStream {
     const sourceBlockHashFromCache = args.sourceCache.get(blockNumber);
     const sourceBlockHash = args.sourceCache.get(blockNumber) ?? (await this.getBlockHashFromSource(blockNumber));
     if (!sourceBlockHashFromCache && sourceBlockHash) {
-      args.sourceCache.add({ number: blockNumber, hash: sourceBlockHash });
+      args.sourceCache.add({ number: BlockNumber(blockNumber), hash: sourceBlockHash });
     }
 
     this.log.trace(`Comparing block hashes for block ${blockNumber}`, { localBlockHash, sourceBlockHash });
@@ -165,7 +170,7 @@ export class L2BlockStream {
 
   private getBlockHashFromSource(blockNumber: number) {
     return this.l2BlockSource
-      .getBlockHeader(blockNumber)
+      .getBlockHeader(BlockNumber(blockNumber))
       .then(h => h?.hash())
       .then(hash => hash?.toString());
   }

@@ -1,4 +1,5 @@
 import { INITIAL_L2_BLOCK_NUM } from '@aztec/constants';
+import { BlockNumber } from '@aztec/foundation/branded-types';
 import { Fr } from '@aztec/foundation/fields';
 import { toArray } from '@aztec/foundation/iterable';
 import { createLogger } from '@aztec/foundation/log';
@@ -167,7 +168,7 @@ export class BlockStore {
 
       const proven = await this.getProvenL2BlockNumber();
       if (from - blocksToUnwind < proven) {
-        await this.setProvenL2BlockNumber(from - blocksToUnwind);
+        await this.setProvenL2BlockNumber(BlockNumber(from - blocksToUnwind));
       }
 
       for (let i = 0; i < blocksToUnwind; i++) {
@@ -382,7 +383,7 @@ export class BlockStore {
       '',
       txEffect.data.transactionFee.toBigInt(),
       txEffect.l2BlockHash,
-      txEffect.l2BlockNumber,
+      BlockNumber(txEffect.l2BlockNumber),
     );
   }
 
@@ -413,9 +414,9 @@ export class BlockStore {
    * Gets the number of the latest L2 block processed.
    * @returns The number of the latest L2 block processed.
    */
-  async getSynchedL2BlockNumber(): Promise<number> {
+  async getSynchedL2BlockNumber(): Promise<BlockNumber> {
     const [lastBlockNumber] = await toArray(this.#blocks.keysAsync({ reverse: true, limit: 1 }));
-    return typeof lastBlockNumber === 'number' ? lastBlockNumber : INITIAL_L2_BLOCK_NUM - 1;
+    return typeof lastBlockNumber === 'number' ? BlockNumber(lastBlockNumber) : BlockNumber(INITIAL_L2_BLOCK_NUM - 1);
   }
 
   /**
@@ -430,15 +431,15 @@ export class BlockStore {
     return this.#lastSynchedL1Block.set(l1BlockNumber);
   }
 
-  async getProvenL2BlockNumber(): Promise<number> {
+  async getProvenL2BlockNumber(): Promise<BlockNumber> {
     const [latestBlockNumber, provenBlockNumber] = await Promise.all([
       this.getSynchedL2BlockNumber(),
       this.#lastProvenL2Block.getAsync(),
     ]);
-    return (provenBlockNumber ?? 0) > latestBlockNumber ? latestBlockNumber : (provenBlockNumber ?? 0);
+    return (provenBlockNumber ?? 0) > latestBlockNumber ? latestBlockNumber : BlockNumber(provenBlockNumber ?? 0);
   }
 
-  setProvenL2BlockNumber(blockNumber: number) {
+  setProvenL2BlockNumber(blockNumber: BlockNumber) {
     return this.#lastProvenL2Block.set(blockNumber);
   }
 

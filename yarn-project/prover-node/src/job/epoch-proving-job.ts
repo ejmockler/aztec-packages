@@ -1,6 +1,6 @@
 import { NUMBER_OF_L1_L2_MESSAGES_PER_ROLLUP } from '@aztec/constants';
 import { asyncPool } from '@aztec/foundation/async-pool';
-import { EpochNumber } from '@aztec/foundation/branded-types';
+import { BlockNumber, EpochNumber } from '@aztec/foundation/branded-types';
 import { padArrayEnd } from '@aztec/foundation/collection';
 import { Fr } from '@aztec/foundation/fields';
 import { createLogger } from '@aztec/foundation/log';
@@ -294,7 +294,7 @@ export class EpochProvingJob implements Traceable {
    * REFACTOR: The prover already spawns a db fork of its own for each block, so we may be able to do away with just one fork.
    */
   private async createFork(blockNumber: number, l1ToL2Messages: Fr[]) {
-    const db = await this.dbProvider.fork(blockNumber);
+    const db = await this.dbProvider.fork(BlockNumber(blockNumber));
     const l1ToL2MessagesPadded = padArrayEnd<Fr, number>(
       l1ToL2Messages,
       Fr.ZERO,

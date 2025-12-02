@@ -1,4 +1,5 @@
 import { shuffle } from '@aztec/foundation/array';
+import { BlockNumber } from '@aztec/foundation/branded-types';
 import { timesAsync } from '@aztec/foundation/collection';
 import { getDefaultConfig } from '@aztec/foundation/config';
 import { Timer } from '@aztec/foundation/timer';
@@ -152,18 +153,18 @@ describe('TxPool: Benchmarks', () => {
     ws = await NativeWorldStateService.tmp();
     const l2 = mock<L2BlockSource & L1ToL2MessageSource>({
       syncImmediate: () => Promise.resolve(),
-      getProvenBlockNumber: () => Promise.resolve(0),
-      getBlockNumber: () => Promise.resolve(0),
+      getProvenBlockNumber: () => Promise.resolve(BlockNumber(0)),
+      getBlockNumber: () => Promise.resolve(BlockNumber(0)),
       getL2Tips: () =>
         Promise.resolve({
           latest: {
-            number: 0,
+            number: BlockNumber(0),
           },
           proven: {
-            number: 0,
+            number: BlockNumber(0),
           },
           finalized: {
-            number: 0,
+            number: BlockNumber(0),
           },
         }),
     });

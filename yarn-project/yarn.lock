@@ -1203,6 +1203,7 @@ __metadata:
   version: 0.0.0-use.local
   resolution: "@aztec/constants@workspace:constants"
   dependencies:
+    "@aztec/foundation": "workspace:^"
     "@jest/globals": "npm:^30.0.0"
     "@types/jest": "npm:^30.0.0"
     "@types/node": "npm:^22.15.17"

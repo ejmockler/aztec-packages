@@ -6,7 +6,7 @@ import {
   PUBLIC_DATA_TREE_HEIGHT,
 } from '@aztec/constants';
 import { type L1ContractAddresses, L1ContractsNames } from '@aztec/ethereum/l1-contract-addresses';
-import { SlotNumber } from '@aztec/foundation/branded-types';
+import { BlockNumber, SlotNumber } from '@aztec/foundation/branded-types';
 import { Buffer32 } from '@aztec/foundation/buffer';
 import { timesAsync } from '@aztec/foundation/collection';
 import { randomInt } from '@aztec/foundation/crypto';
@@ -235,18 +235,18 @@ describe('AztecNodeApiSchema', () => {
   });
 
   it('getBlocks', async () => {
-    const response = await context.client.getBlocks(1, 1);
+    const response = await context.client.getBlocks(BlockNumber(1), 1);
     expect(response).toHaveLength(1);
     expect(response[0]).toBeInstanceOf(L2Block);
 
-    await expect(context.client.getBlocks(-1, 1)).rejects.toThrow();
-    await expect(context.client.getBlocks(0, 1)).rejects.toThrow();
-    await expect(context.client.getBlocks(1, 0)).rejects.toThrow();
-    await expect(context.client.getBlocks(1, MAX_RPC_LEN + 1)).rejects.toThrow();
+    await expect(context.client.getBlocks(BlockNumber(-1), 1)).rejects.toThrow();
+    await expect(context.client.getBlocks(BlockNumber(0), 1)).rejects.toThrow();
+    await expect(context.client.getBlocks(BlockNumber(1), 0)).rejects.toThrow();
+    await expect(context.client.getBlocks(BlockNumber(1), MAX_RPC_LEN + 1)).rejects.toThrow();
   });
 
   it('getPublishedBlocks', async () => {
-    const response = await context.client.getPublishedBlocks(1, 1);
+    const response = await context.client.getPublishedBlocks(BlockNumber(1), 1);
     expect(response).toHaveLength(1);
     expect(response[0].block.constructor.name).toEqual('L2Block');
     expect(response[0].attestations[0]).toBeInstanceOf(CommitteeAttestation);
@@ -283,7 +283,7 @@ describe('AztecNodeApiSchema', () => {
   });
 
   it('getPrivateLogs', async () => {
-    const response = await context.client.getPrivateLogs(1, 1);
+    const response = await context.client.getPrivateLogs(BlockNumber(1), 1);
     expect(response).toEqual([expect.any(PrivateLog)]);
   });
 
@@ -510,19 +510,19 @@ class MockAztecNode implements AztecNode {
 
   getWorldStateSyncStatus(): Promise<WorldStateSyncStatus> {
     return Promise.resolve({
-      finalizedBlockNumber: 1,
+      finalizedBlockNumber: BlockNumber(1),
       latestBlockHash: '0x',
-      latestBlockNumber: 1,
-      oldestHistoricBlockNumber: 1,
+      latestBlockNumber: BlockNumber(1),
+      oldestHistoricBlockNumber: BlockNumber(1),
       treesAreSynched: true,
     });
   }
 
   getL2Tips(): Promise<L2Tips> {
     return Promise.resolve({
-      latest: { number: 1, hash: `0x01` },
-      proven: { number: 1, hash: `0x01` },
-      finalized: { number: 1, hash: `0x01` },
+      latest: { number: BlockNumber(1), hash: `0x01` },
+      proven: { number: BlockNumber(1), hash: `0x01` },
+      finalized: { number: BlockNumber(1), hash: `0x01` },
     });
   }
 
@@ -571,9 +571,9 @@ class MockAztecNode implements AztecNode {
     expect(noteHash).toBeInstanceOf(Fr);
     return Promise.resolve(MembershipWitness.random(NOTE_HASH_TREE_HEIGHT));
   }
-  getL1ToL2MessageBlock(l1ToL2Message: Fr): Promise<number | undefined> {
+  getL1ToL2MessageBlock(l1ToL2Message: Fr): Promise<BlockNumber | undefined> {
     expect(l1ToL2Message).toBeInstanceOf(Fr);
-    return Promise.resolve(5);
+    return Promise.resolve(BlockNumber(5));
   }
   isL1ToL2MessageSynced(l1ToL2Message: Fr): Promise<boolean> {
     expect(l1ToL2Message).toBeInstanceOf(Fr);
@@ -615,13 +615,13 @@ class MockAztecNode implements AztecNode {
     return Promise.resolve(PublicDataWitness.random());
   }
   getBlock(number: number): Promise<L2Block | undefined> {
-    return Promise.resolve(L2Block.random(number));
+    return Promise.resolve(L2Block.random(BlockNumber(number)));
   }
   getBlockByHash(_blockHash: Fr): Promise<L2Block | undefined> {
-    return Promise.resolve(L2Block.random(1));
+    return Promise.resolve(L2Block.random(BlockNumber(1)));
   }
   getBlockByArchive(_archive: Fr): Promise<L2Block | undefined> {
-    return Promise.resolve(L2Block.random(1));
+    return Promise.resolve(L2Block.random(BlockNumber(1)));
   }
   getBlockHeaderByHash(_blockHash: Fr): Promise<BlockHeader | undefined> {
     return Promise.resolve(BlockHeader.empty());
@@ -635,11 +635,11 @@ class MockAztecNode implements AztecNode {
   getMaxPriorityFees(): Promise<GasFees> {
     return Promise.resolve(GasFees.empty());
   }
-  getBlockNumber(): Promise<number> {
-    return Promise.resolve(1);
+  getBlockNumber(): Promise<BlockNumber> {
+    return Promise.resolve(BlockNumber(1));
   }
-  getProvenBlockNumber(): Promise<number> {
-    return Promise.resolve(1);
+  getProvenBlockNumber(): Promise<BlockNumber> {
+    return Promise.resolve(BlockNumber(1));
   }
   isReady(): Promise<boolean> {
     return Promise.resolve(true);
@@ -663,13 +663,13 @@ class MockAztecNode implements AztecNode {
     return Promise.all(
       Array(limit)
         .fill(0)
-        .map(i => L2Block.random(from + i)),
+        .map(i => L2Block.random(BlockNumber(from + i))),
     );
   }
   getPublishedBlocks(from: number, limit: number): Promise<PublishedL2Block[]> {
     return timesAsync(limit, async i =>
       PublishedL2Block.fromFields({
-        block: await L2Block.random(from + i),
+        block: await L2Block.random(BlockNumber(from + i)),
         attestations: [CommitteeAttestation.random()],
         l1: { blockHash: Buffer32.random().toString(), blockNumber: 1n, timestamp: 1n },
       }),

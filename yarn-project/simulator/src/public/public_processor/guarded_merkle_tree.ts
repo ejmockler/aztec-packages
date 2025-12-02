@@ -123,6 +123,7 @@ export class GuardedMerkleTreeOperations implements MerkleTreeWriteOperations {
   ): Promise<MerkleTreeLeafType<typeof treeId> | undefined> {
     return this.guardAndPush(() => this.target.getLeafValue(treeId, index));
   }
+  // TODO: Update return type to (BlockNumber | undefined)[] once MerkleTreeWriteOperations interface in stdlib is updated
   getBlockNumbersForLeafIndices<ID extends MerkleTreeId>(
     treeId: ID,
     leafIndices: bigint[],

@@ -52,6 +52,7 @@ export async function deployContractsToL1(
   hdAccount: HDAccount | PrivateKeyAccount,
   contractDeployLogger = logger,
   opts: {
+    // TODO: Check which type to use - appears to be L1 block number (used for L1 contract deployment)
     assumeProvenThroughBlockNumber?: number;
     salt?: number;
     genesisArchiveRoot?: Fr;

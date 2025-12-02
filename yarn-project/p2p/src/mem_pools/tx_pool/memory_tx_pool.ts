@@ -1,3 +1,4 @@
+import { BlockNumber } from '@aztec/foundation/branded-types';
 import { createLogger } from '@aztec/foundation/log';
 import type { TypedEventEmitter } from '@aztec/foundation/types';
 import type { TxAddedToPoolStats } from '@aztec/stdlib/stats';
@@ -18,9 +19,9 @@ export class InMemoryTxPool extends (EventEmitter as new () => TypedEventEmitter
    * Our tx pool, stored as a Map in-memory, with K: tx hash and V: the transaction.
    */
   private txs: Map<bigint, Tx>;
-  private minedTxs: Map<bigint, number>;
+  private minedTxs: Map<bigint, BlockNumber>;
   private pendingTxs: Set<bigint>;
-  private deletedMinedTxHashes: Map<bigint, number>;
+  private deletedMinedTxHashes: Map<bigint, BlockNumber>;
   private blockToDeletedMinedTxHash: Map<number, Set<bigint>>;
 
   private metrics: PoolInstrumentation<Tx>;
@@ -63,15 +64,15 @@ export class InMemoryTxPool extends (EventEmitter as new () => TypedEventEmitter
         const originalBlock = this.deletedMinedTxHashes.get(key)!;
         this.deletedMinedTxHashes.delete(key);
         // Remove from block-to-hash mapping
-        const txHashesForBlock = this.blockToDeletedMinedTxHash.get(originalBlock);
+        const txHashesForBlock = this.blockToDeletedMinedTxHash.get(Number(originalBlock));
         if (txHashesForBlock) {
           txHashesForBlock.delete(key);
           if (txHashesForBlock.size === 0) {
-            this.blockToDeletedMinedTxHash.delete(originalBlock);
+            this.blockToDeletedMinedTxHash.delete(Number(originalBlock));
           }
         }
       }
-      this.minedTxs.set(key, blockHeader.globalVariables.blockNumber);
+      this.minedTxs.set(key, BlockNumber(blockHeader.globalVariables.blockNumber));
       this.pendingTxs.delete(key);
     }
     return Promise.resolve();
@@ -108,7 +109,7 @@ export class InMemoryTxPool extends (EventEmitter as new () => TypedEventEmitter
     });
   }
 
-  public getMinedTxHashes(): Promise<[TxHash, number][]> {
+  public getMinedTxHashes(): Promise<[TxHash, BlockNumber][]> {
     return Promise.resolve(
       Array.from(this.minedTxs.entries()).map(([txHash, blockNumber]) => [TxHash.fromBigInt(txHash), blockNumber]),
     );
@@ -210,10 +211,11 @@ export class InMemoryTxPool extends (EventEmitter as new () => TypedEventEmitter
             this.txs.delete(key);
           } else {
             this.deletedMinedTxHashes.set(key, blockNumber);
-            if (!this.blockToDeletedMinedTxHash.has(blockNumber)) {
-              this.blockToDeletedMinedTxHash.set(blockNumber, new Set());
+            const blockNumberAsNumber = Number(blockNumber);
+            if (!this.blockToDeletedMinedTxHash.has(blockNumberAsNumber)) {
+              this.blockToDeletedMinedTxHash.set(blockNumberAsNumber, new Set());
             }
-            this.blockToDeletedMinedTxHash.get(blockNumber)!.add(key);
+            this.blockToDeletedMinedTxHash.get(blockNumberAsNumber)!.add(key);
           }
         } else {
           // Permanently delete pending transactions
@@ -253,13 +255,14 @@ export class InMemoryTxPool extends (EventEmitter as new () => TypedEventEmitter
    * @param blockNumber - Block number threshold. Deleted mined txs from this block or earlier will be permanently deleted.
    * @returns The number of transactions permanently deleted.
    */
-  public cleanupDeletedMinedTxs(blockNumber: number): Promise<number> {
+  public cleanupDeletedMinedTxs(blockNumber: BlockNumber): Promise<number> {
     let deletedCount = 0;
     const blocksToDelete: number[] = [];
 
+    const blockNumberAsNumber = Number(blockNumber);
     // Find all blocks up to the specified block number
     for (const [block, txHashes] of this.blockToDeletedMinedTxHash.entries()) {
-      if (block <= blockNumber) {
+      if (block <= blockNumberAsNumber) {
         // Permanently delete all transactions from this block
         for (const txHash of txHashes) {
           this.txs.delete(txHash);

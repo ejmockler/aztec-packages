@@ -47,6 +47,7 @@ import {
   getL1ContractsConfigEnvVars,
 } from '@aztec/ethereum';
 import { createL1TxUtilsWithBlobsFromViemWallet } from '@aztec/ethereum/l1-tx-utils-with-blobs';
+import { BlockNumber } from '@aztec/foundation/branded-types';
 import { SecretValue } from '@aztec/foundation/config';
 import { Signature } from '@aztec/foundation/eth-signature';
 import { sleep } from '@aztec/foundation/sleep';
@@ -365,7 +366,7 @@ describe('e2e_synching', () => {
         await cheatCodes.rollup.markAsProven();
       }
 
-      const blocks = await aztecNode.getBlocks(1, await aztecNode.getBlockNumber());
+      const blocks = await aztecNode.getBlocks(BlockNumber(1), await aztecNode.getBlockNumber());
 
       await variant.writeBlocks(blocks);
       await teardown();
@@ -500,7 +501,7 @@ describe('e2e_synching', () => {
             const freshNode = await AztecNodeService.createAndSync({ ...opts.config!, disableValidator: true });
             const syncTime = timer.s();
 
-            const blockNumber = await freshNode.getBlockNumber();
+            const blockNumber = BlockNumber(await freshNode.getBlockNumber());
 
             opts.logger!.info(
               `Stats: ${variant.description()}: ${JSON.stringify({
@@ -639,8 +640,10 @@ describe('e2e_synching', () => {
 
           // Check world state reverted as well
           expect(await worldState.getLatestBlockNumber()).toEqual(Number(provenThrough));
-          const worldStateLatestBlockHash = await worldState.getL2BlockHash(Number(provenThrough));
-          const archiverLatestBlockHash = await archiver.getBlockHeader(Number(provenThrough)).then(b => b?.hash());
+          const worldStateLatestBlockHash = await worldState.getL2BlockHash(BlockNumber(Number(provenThrough)));
+          const archiverLatestBlockHash = await archiver
+            .getBlockHeader(BlockNumber(Number(provenThrough)))
+            .then(b => b?.hash());
           expect(worldStateLatestBlockHash).toEqual(archiverLatestBlockHash?.toString());
 
           await tryStop(archiver);
@@ -672,7 +675,7 @@ describe('e2e_synching', () => {
           const aztecNode = await AztecNodeService.createAndSync(opts.config!);
           const sequencer = aztecNode.getSequencer();
 
-          const blockBeforePrune = await aztecNode.getBlockNumber();
+          const blockBeforePrune = BlockNumber(await aztecNode.getBlockNumber());
 
           const timeliness = (await rollup.read.getEpochDuration()) * 2n;
           const blockLog = await rollup.read.getCheckpoint([(await rollup.read.getProvenCheckpointNumber()) + 1n]);

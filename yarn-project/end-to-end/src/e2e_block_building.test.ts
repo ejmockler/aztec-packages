@@ -7,7 +7,7 @@ import type { AztecNode } from '@aztec/aztec.js/node';
 import { TxStatus } from '@aztec/aztec.js/tx';
 import { AnvilTestWatcher, CheatCodes } from '@aztec/aztec/testing';
 import { asyncMap } from '@aztec/foundation/async-map';
-import { EpochNumber } from '@aztec/foundation/branded-types';
+import { BlockNumber, EpochNumber } from '@aztec/foundation/branded-types';
 import { times, unique } from '@aztec/foundation/collection';
 import { poseidon2Hash } from '@aztec/foundation/crypto';
 import { retryUntil } from '@aztec/foundation/retry';
@@ -596,7 +596,7 @@ describe('e2e_block_building', () => {
     let contract: StatefulTestContract;
     let cheatCodes: CheatCodes;
     let ownerAddress: AztecAddress;
-    let initialBlockNumber: number;
+    let initialBlockNumber: BlockNumber;
     let teardown: () => Promise<void>;
 
     beforeEach(async () => {
@@ -611,7 +611,7 @@ describe('e2e_block_building', () => {
       } = await setup(1));
 
       contract = await StatefulTestContract.deploy(wallet, ownerAddress, 1).send({ from: ownerAddress }).deployed();
-      initialBlockNumber = await aztecNode.getBlockNumber();
+      initialBlockNumber = BlockNumber(await aztecNode.getBlockNumber());
       logger.info(`Stateful test contract deployed at ${contract.address}`);
 
       await cheatCodes.rollup.advanceToNextEpoch();

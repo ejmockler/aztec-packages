@@ -7,7 +7,7 @@ import {
   PUBLIC_DATA_TREE_HEIGHT,
 } from '@aztec/constants';
 import { type L1ContractAddresses, L1ContractAddressesSchema } from '@aztec/ethereum/l1-contract-addresses';
-import type { SlotNumber } from '@aztec/foundation/branded-types';
+import { BlockNumber, BlockNumberSchema, type SlotNumber } from '@aztec/foundation/branded-types';
 import type { EthAddress } from '@aztec/foundation/eth-address';
 import type { Fr } from '@aztec/foundation/fields';
 import { createSafeJsonRpcClient, makeFetch } from '@aztec/foundation/json-rpc/client';
@@ -202,7 +202,7 @@ export interface AztecNode
   ): Promise<[bigint, SiblingPath<typeof L1_TO_L2_MSG_TREE_HEIGHT>] | undefined>;
 
   /** Returns the L2 block number in which this L1 to L2 message becomes available, or undefined if not found. */
-  getL1ToL2MessageBlock(l1ToL2Message: Fr): Promise<number | undefined>;
+  getL1ToL2MessageBlock(l1ToL2Message: Fr): Promise<BlockNumber | undefined>;
 
   /**
    * Returns whether an L1 to L2 message is synced by archiver.
@@ -244,13 +244,13 @@ export interface AztecNode
    * Method to fetch the latest block number synchronized by the node.
    * @returns The block number.
    */
-  getBlockNumber(): Promise<number>;
+  getBlockNumber(): Promise<BlockNumber>;
 
   /**
    * Fetches the latest proven block number.
    * @returns The block number.
    */
-  getProvenBlockNumber(): Promise<number>;
+  getProvenBlockNumber(): Promise<BlockNumber>;
 
   /**
    * Method to determine if the node is ready to accept transactions.
@@ -271,7 +271,7 @@ export interface AztecNode
    * @param limit - The maximum number of blocks to return.
    * @returns The blocks requested.
    */
-  getBlocks(from: number, limit: number): Promise<L2Block[]>;
+  getBlocks(from: BlockNumber, limit: number): Promise<L2Block[]>;
 
   /**
    * Method to fetch the current base fees.
@@ -326,7 +326,7 @@ export interface AztecNode
    * @param limit - The maximum number of blocks to retrieve logs from.
    * @returns An array of private logs from the specified range of blocks.
    */
-  getPrivateLogs(from: number, limit: number): Promise<PrivateLog[]>;
+  getPrivateLogs(from: BlockNumber, limit: number): Promise<PrivateLog[]>;
 
   /**
    * Gets public logs based on the provided filter.
@@ -547,7 +547,7 @@ export const AztecNodeApiSchema: ApiSchemaFor<AztecNode> = {
     .args(L2BlockNumberSchema, schemas.Fr)
     .returns(z.tuple([schemas.BigInt, SiblingPath.schemaFor(L1_TO_L2_MSG_TREE_HEIGHT)]).optional()),
 
-  getL1ToL2MessageBlock: z.function().args(schemas.Fr).returns(z.number().optional()),
+  getL1ToL2MessageBlock: z.function().args(schemas.Fr).returns(BlockNumberSchema.optional()),
 
   isL1ToL2MessageSynced: z.function().args(schemas.Fr).returns(z.boolean()),
 
@@ -562,9 +562,9 @@ export const AztecNodeApiSchema: ApiSchemaFor<AztecNode> = {
 
   getBlockByArchive: z.function().args(schemas.Fr).returns(L2Block.schema.optional()),
 
-  getBlockNumber: z.function().returns(z.number()),
+  getBlockNumber: z.function().returns(BlockNumberSchema),
 
-  getProvenBlockNumber: z.function().returns(z.number()),
+  getProvenBlockNumber: z.function().returns(BlockNumberSchema),
 
   isReady: z.function().returns(z.boolean()),
 
@@ -572,12 +572,18 @@ export const AztecNodeApiSchema: ApiSchemaFor<AztecNode> = {
 
   getBlocks: z
     .function()
-    .args(z.number().gte(INITIAL_L2_BLOCK_NUM), z.number().gt(0).lte(MAX_RPC_BLOCKS_LEN))
+    .args(
+      BlockNumberSchema.pipe(z.custom<BlockNumber>(val => val >= INITIAL_L2_BLOCK_NUM)),
+      z.number().gt(0).lte(MAX_RPC_BLOCKS_LEN),
+    )
     .returns(z.array(L2Block.schema)),
 
   getPublishedBlocks: z
     .function()
-    .args(z.number().gte(INITIAL_L2_BLOCK_NUM), z.number().gt(0).lte(MAX_RPC_BLOCKS_LEN))
+    .args(
+      BlockNumberSchema.pipe(z.custom<BlockNumber>(val => val >= INITIAL_L2_BLOCK_NUM)),
+      z.number().gt(0).lte(MAX_RPC_BLOCKS_LEN),
+    )
     .returns(z.array(PublishedL2Block.schema)),
 
   getCurrentBaseFees: z.function().returns(GasFees.schema),
@@ -601,7 +607,10 @@ export const AztecNodeApiSchema: ApiSchemaFor<AztecNode> = {
 
   getPrivateLogs: z
     .function()
-    .args(z.number().gte(INITIAL_L2_BLOCK_NUM), z.number().lte(MAX_RPC_LEN))
+    .args(
+      BlockNumberSchema.pipe(z.custom<BlockNumber>(val => val >= INITIAL_L2_BLOCK_NUM)),
+      z.number().lte(MAX_RPC_LEN),
+    )
     .returns(z.array(PrivateLog.schema)),
 
   getPublicLogs: z.function().args(LogFilterSchema).returns(GetPublicLogsResponseSchema),
