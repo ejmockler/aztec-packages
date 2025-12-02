@@ -11,9 +11,9 @@ pub mod state_variable;
 
 pub use crate::state_vars::delayed_public_mutable::DelayedPublicMutable;
 pub use crate::state_vars::map::Map;
+pub use crate::state_vars::owned::Owned;
 pub use crate::state_vars::private_immutable::PrivateImmutable;
 pub use crate::state_vars::private_mutable::PrivateMutable;
 pub use crate::state_vars::private_set::PrivateSet;
 pub use crate::state_vars::public_immutable::PublicImmutable;
 pub use crate::state_vars::public_mutable::PublicMutable;
-pub use crate::state_vars::storage::HasStorageSlot;

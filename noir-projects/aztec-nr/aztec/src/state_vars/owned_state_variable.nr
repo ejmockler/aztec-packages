@@ -1,3 +1,5 @@
+use protocol_types::address::AztecAddress;
+
 pub trait OwnedStateVariable<Context> {
     /// Initializes a new owned state variable.
     ///

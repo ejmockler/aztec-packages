@@ -164,16 +164,19 @@ pub(crate) comptime fn compute_struct_selector(
     unquote!(computation_quote)
 }
 
-/// Returns how many storage slots a type needs to reserve for itself. State variables must implement the Storage trait
-/// for slots to be allocated for them.
+/// Returns how many storage slots a type needs to reserve for itself. State variables must implement the StateVariable
+/// trait for slots to be allocated for them.
 pub(crate) comptime fn get_storage_size(typ: Type) -> u32 {
     // We create a type variable for the storage size. We can't simply read the value used in the implementation because
-    // it may not be a constant (e.g. N + 1). We then bind it to the implementation of the Storage trait.
+    // it may not be a constant (e.g. N + 1). We then bind it to the implementation of the StateVariable trait.
     let storage_size = std::meta::typ::fresh_type_variable();
+    let context = std::meta::typ::fresh_type_variable();
     assert(
-        typ.implements(quote { crate::state_vars::HasStorageSlot<$storage_size> }
-            .as_trait_constraint()),
-        f"Attempted to fetch storage size, but {typ} does not implement the HasStorageSlot trait",
+        typ.implements(
+            quote { crate::state_vars::state_variable::StateVariable<$storage_size, $context> }
+                .as_trait_constraint(),
+        ),
+        f"Attempted to fetch storage size, but {typ} does not implement the StateVariable trait",
     );
 
     storage_size.as_constant().unwrap()

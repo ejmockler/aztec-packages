@@ -8,7 +8,7 @@ use crate::{
         note_interface::{NoteHash, NoteType},
     },
     oracle::notes::check_nullifier_exists,
-    state_vars::storage::HasStorageSlot,
+    state_vars::owned_state_variable::OwnedStateVariable,
 };
 
 use protocol_types::{
@@ -40,13 +40,13 @@ mod test;
 /// While any number of notes can be created within a PrivateMutable, at any moment,
 /// only one note exists per "owner."
 /// To interact with a specific owner's note, call `PrivateMutable::at(owner)`, which
-/// returns an OwnedPrivateMutable handle for that owner.
+/// returns an PrivateMutable handle for that owner.
 ///
-/// An OwnedPrivateMutable state variable is initialized by inserting a very first note.
-/// Subsequently, the OwnedPrivateMutable can make changes to the state variable's value by
+/// An PrivateMutable state variable is initialized by inserting a very first note.
+/// Subsequently, the PrivateMutable can make changes to the state variable's value by
 /// nullifying the current note and inserting a replacement note.
 ///
-/// The methods of OwnedPrivateMutable are:
+/// The methods of PrivateMutable are:
 /// - `initialize`
 /// - `replace`
 /// - `initialize_or_replace`
@@ -61,7 +61,7 @@ mod test;
 ///
 /// When the nonce needs to be incremented, the current note gets nullified
 /// and a new note with the incremented nonce gets inserted. The new note then
-/// becomes the "current value" of the OwnedPrivateMutable state variable.
+/// becomes the "current value" of the PrivateMutable state variable.
 ///
 /// This is similar to how `uint256 nonce` would work in Solidity: there's always
 /// exactly one current value, and updating it overwrites the previous value.
@@ -77,7 +77,7 @@ mod test;
 /// - Use PrivateSet when you want to allow "other people" (beyond the owner) to
 ///   insert notes into the state variable.
 ///
-/// Only the 'owner' of the given OwnedPrivateMutable state variable can mutate it,
+/// Only the 'owner' of the given PrivateMutable state variable can mutate it,
 /// because every mutation requires nullifying the current note, and only the owner
 /// knows the note's content and the secret necessary to compute its nullifier.
 ///
@@ -96,61 +96,16 @@ mod test;
 pub struct PrivateMutable<Note, Context> {
     context: Context,
     storage_slot: Field,
+    owner: AztecAddress,
 }
 
-// Private storage slots are not really 'slots' but rather a value in the note hash preimage, so there is no notion of a
-// value spilling over multiple slots. For this reason PrivateMutable (and all other private state variables) needs just
-// one slot to be reserved, regardless of what it stores.
-impl<T, Context> HasStorageSlot<1> for PrivateMutable<T, Context> {
-    fn get_storage_slot(self) -> Field {
-        self.storage_slot
+impl<Note, Context> OwnedStateVariable<Context> for PrivateMutable<Note, Context> {
+    fn new(context: Context, storage_slot: Field, owner: AztecAddress) -> Self {
+        Self { context, storage_slot, owner }
     }
 }
 
 impl<Note, Context> PrivateMutable<Note, Context> {
-    /// Initializes a new PrivateMutable state variable.
-    ///
-    /// This function is usually automatically called within the #[storage] macro.
-    /// You typically don't need to call this directly when writing smart contracts.
-    ///
-    /// # Arguments
-    ///
-    /// * `context` - One of `PrivateContext`/`PublicContext`/`UtilityContext`. The
-    ///               Context determines which methods of this struct will be made
-    ///               available to the calling smart contract function.
-    /// * `storage_slot` - A unique identifier for this state variable within the
-    ///                    contract. Every replacement note for this PrivateMutable
-    ///                    state variable will have the same `storage_slot`.
-    ///                    Usually, the #[storage] macro will determine an
-    ///                    appropriate storage_slot automatically. A smart contract
-    ///                    dev shouldn't have to worry about this, as it's managed
-    ///                    behind the scenes.
-    ///
-    /// docs:start:new
-    pub fn new(context: Context, storage_slot: Field) -> Self {
-        assert(storage_slot != 0, "Storage slot 0 not allowed. Storage slots must start from 1.");
-        Self { context, storage_slot }
-    }
-
-    /// Returns an OwnedPrivateMutable scoped to the given `owner`'s note.
-    pub fn at(self, owner: AztecAddress) -> OwnedPrivateMutable<Note, Context> {
-        OwnedPrivateMutable::new(self.context, owner, self.storage_slot)
-    }
-}
-
-/// A view of notes in a PrivateMutable belonging to a specific `owner`.
-/// Obtained by calling `PrivateMutable::at(owner)`.
-pub struct OwnedPrivateMutable<Note, Context> {
-    context: Context,
-    owner: AztecAddress,
-    storage_slot: Field,
-}
-
-impl<Note, Context> OwnedPrivateMutable<Note, Context> {
-    fn new(context: Context, owner: AztecAddress, storage_slot: Field) -> Self {
-        Self { context, owner, storage_slot }
-    }
-
     /// Computes the initialization nullifier using the provided secret.
     fn compute_initialization_nullifier(self, secret: Field) -> Field {
         poseidon2_hash_with_separator(
@@ -160,7 +115,7 @@ impl<Note, Context> OwnedPrivateMutable<Note, Context> {
     }
 }
 
-impl<Note> OwnedPrivateMutable<Note, &mut PrivateContext>
+impl<Note> PrivateMutable<Note, &mut PrivateContext>
 where
     Note: NoteType + NoteHash,
 {
@@ -176,10 +131,10 @@ where
         self.compute_initialization_nullifier(secret)
     }
 
-    /// Initializes an OwnedPrivateMutable state variable instance with its first note.
+    /// Initializes an PrivateMutable state variable instance with its first note.
     ///
     /// This function creates the very first note for this state variable. It can
-    /// only be called once per OwnedPrivateMutable. Subsequent calls will fail because
+    /// only be called once per PrivateMutable. Subsequent calls will fail because
     /// the initialization nullifier will already exist.
     ///
     /// This is conceptually similar to setting an initial value for a variable in
@@ -406,7 +361,7 @@ where
     }
 }
 
-impl<Note> OwnedPrivateMutable<Note, UtilityContext>
+impl<Note> PrivateMutable<Note, UtilityContext>
 where
     Note: NoteType + NoteHash + Eq,
 {
