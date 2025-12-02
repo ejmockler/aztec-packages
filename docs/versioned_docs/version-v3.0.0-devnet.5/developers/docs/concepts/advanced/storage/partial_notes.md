@@ -1,217 +1,130 @@
 ---
-title: Partial Notes [OUTDATED DOCS]
-description: Describes how partial notes are used in Aztec
-tags: [notes, storage]
-sidebar_position: 4
+title: Partial Notes
+sidebar_position: 1
+tags: [Developers, Contracts, Notes]
+description: How partial notes work and how they can be used.
 ---
 
-:::warning OUTDATED DOCUMENTATION
-This documentation is outdated and may not reflect the current state of the Aztec protocol. This is to be updated when tackling [this issue](https://github.com/AztecProtocol/aztec-packages/issues/12414).
-TODO(#12414): UPDATE THIS
-:::
+import Image from "@theme/IdealImage";
 
-Partial notes are a concept that allows users to commit to an encrypted value, and allows a counterparty to update that value without knowing the specific details of the encrypted value.
+## What are Partial Notes?
 
-## Use cases
+Partial notes are notes created with incomplete data, usually during private execution, which can be completed with additional information that becomes available later, usually during public execution.
 
-Why is this useful?
+Let’s say, for example, I have a `UintNote`:
 
-Consider the case where a user wants to pay for a transaction fee, using a fee-payment contract and they want to do this privately. They can't be certain what the transaction fee will be because the state of the network will have progressed by the time the transaction is processed by the sequencer, and transaction fees are dynamic. So the user can commit to a value for the transaction fee, publicly post this commitment, the fee payer (aka paymaster) can update the public commitment, deducting the final cost of the transaction from the commitment and returning the unused value to the user.
-
-So, in general, the user is:
-
-- doing some computation in private
-- encrypting/compressing that computation with a point
-- passing that point as an argument to a public function
-
-And the paymaster is:
-
-- updating that point in public
-- treating/emitting the result(s) as a note hash(es)
-
-The idea of committing to a value and allowing a counterparty to update that value without knowing the specific details of the encrypted value is a powerful concept that can be used in many different applications. For example, this could be used for updating timestamp values in private, without revealing the exact timestamp, which could be useful for many defi applications.
-
-To do this, we leverage the following properties of elliptic curve operations:
-
-1. `x_1 * G + x_2 * G` equals `(x_1 + x_2) * G` and
-2. `f(x) = x * G` being a one-way function.
-
-Property 1 allows us to be continually adding to a point on elliptic curve and property 2 allows us to pass the point to a public realm without revealing anything about the point preimage.
-
-### DEXes
-
-Currently private swaps require 2 transactions. One to start the swap and another to claim the swapped token from the DEX. With partial notes, you can create a note with zero value for the received amount and have another party complete it later from a public function, with the final swapped amount. This reduces the number of transactions needed to swap privately.
-
-Comparing to the flow above, the user is doing some private computation to stage the swap, encrypting the computation with a point and passing the point as an argument to a public function. Then another party is updating that point in public and emitting the result as a note hash for the user doing the swap.
-
-### Lending
-
-A similar pattern can be used for a lending protocol. The user can deposit a certain amount of a token to the lending contract and create a partial note for the borrowed token that will be completed by another party. This reduces the number of required transactions from 2 to 1.
-
-### Private Refunds
-
-Private transaction refunds from paymasters are the original inspiration for partial notes. Without partial notes, you have to claim your refund note. But the act of claiming itself needs gas! What if you overpaid fees on the refund tx? Then you have another 2nd order refund that you need to claim. This creates a never ending cycle! Partial notes allow paymasters to refund users without the user needing to claim the refund.
-
-Before getting to partial notes let's recap what is the flow of standard notes.
-
-## Note lifecycle recap
-
-The standard note flow is as follows:
-
-1. Create a note in your contract,
-2. compute the note hash,
-3. emit the note hash,
-4. emit the note (note hash preimage) as an encrypted note log,
-5. sequencer picks up the transaction, includes it in a block (note hash gets included in a note hash tree) and submits the block onchain,
-6. nodes and PXEs following the network pick up the new block, update its internal state and if they have accounts attached they search for relevant encrypted note logs,
-7. if a users PXE finds a log it stores the note in its database,
-8. later on when we want to spend a note, a contract obtains it via oracle and stores a note hash read request within the function context (note hash read request contains a newly computed note hash),
-9. based on the note and a nullifier secret key a nullifier is computed and emitted,
-10. protocol circuits check that the note is a valid note by checking that the note hash read request corresponds to a real note in the note hash tree and that the new nullifier does not yet exist in the nullifier tree,
-11. if the conditions in point 10. are satisfied the nullifier is inserted into the nullifier tree and the note is at the end of its life.
-
-Now let's do the same for partial notes.
-
-## Partial notes life cycle
-
-1. Create a partial/unfinished note in a private function of your contract --> partial here means that the values within the note are not yet considered finalized (e.g. `amount` in a `UintNote`),
-2. compute a partial note commitment of the partial note using a multi scalar multiplication on an elliptic curve. For `UintNote` this would be done as `G_amt * amount0 + G_npk * npk_m_hash + G_rnd * randomness + G_slot * slot`, where each `G_` is a generator point for a specific field in the note,
-3. emit partial note log,
-4. pass the partial note commitment to a public function,
-5. in a public function determine the value you want to add to the note (e.g. adding a value to an amount) and add it to the partial note commitment (e.g. `NOTE_HIDING_POINT + G_amt * amount`),
-6. get the note hash by finalizing the partial note commitment (the note hash is the x coordinate of the point),
-7. emit the note hash,
-8. emit the value added to the note in public as an unencrypted log (PXE then matches it with encrypted partial note log emitted from private),
-9. from this point on the flow of partial notes is the same as for normal notes.
-
-### Private Fee Payment Example
-
-Alice wants to use a fee-payment contract for fee abstraction, and wants to use private balances. That is, she wants to pay the FPC (fee-payment contract) some amount in an arbitrary token privately (e.g. a stablecoin), and have the FPC pay the `transaction_fee`.
-
-Alice also wants to get her refund privately in the same token (e.g. the stablecoin).
-
-The trouble is that the FPC doesn't know if Alice is going to run public functions, in which case it doesn't know what refund is due until the end of public execution.
-
-And we can't use the normal flow to create a transaction fee refund note for Alice, since that demands we have Alice's address in public.
-
-So we define a new type of note with its `compute_partial_commitment` defined as:
-
-$$
-\text{amount} \cdot G_\text{amount} + \text{address} \cdot G_\text{address} + \text{randomness} \cdot G_\text{randomness} + \text{slot} \cdot G_\text{slot}
-$$
-
-Suppose Alice is willing to pay up to a set amount in stablecoins for her transaction. (Note, this amount gets passed into public so that when `transaction_fee` is known the FPC can verify that it isn't losing money. Wallets are expected to choose common values here, e.g. powers of 10).
-
-Then we can subtract the set amount from Alice's balance of private stablecoins, and create a point in private like:
-
-$$
-P_a' := \text{alice address} \cdot G_\text{address} + \text{rand}_a \cdot G_\text{randomness} + \text{Alice note slot} \cdot G_\text{slot}
-$$
-
-We also need to create a point for the owner of the FPC (whom we call Bob) to receive the transaction fee, which will also need randomness.
-
-So in the contract we compute $\text{rand}_b := h(\text{rand}_a, \text{msg sender})$.
-
-:::warning
-We need to use different randomness for Bob's note here to avoid potential privacy leak (see [description](https://github.com/AztecProtocol/aztec-packages/blob/v3.0.0-devnet.5/noir-projects/noir-contracts/contracts/app/token_contract/src/main.nr#L491) of `setup_refund` function)
-:::
-
-$$
-P_b' := \text{bob address} \cdot G_\text{address} + \text{rand}_b \cdot G_\text{randomness} + \text{Bob note slot} \cdot G_\text{slot}
-$$
-
-Here, the $P'$s "partially encode" the notes that we are _going to create_ for Alice and Bob. So we can use points as "Partial Notes".
-
-We pass these points and the funded amount to public, and at the end of public execution, we compute tx fee point $P_{fee} := (\text{transaction fee}) * G_{amount}$ and refund point $P_{refund} := (\text{funded amount} - \text{transaction fee}) * G_{amount}$
-
-Then, we arrive at the point that corresponds to the complete note by
-
-$$
-P_a := P_a'+P_\text{refund} = (\text{funded amount} - \text{transaction fee}) \cdot G_\text{amount} + \text{alice address} \cdot G_\text{address} + \text{rand}_a \cdot G_\text{randomness} + \text{Alice note slot} \cdot G_\text{slot}
-$$
-
-$$
-P_b := P_b'+P_\text{fee} = (\text{transaction fee}) \cdot G_\text{amount} + \text{bob address} \cdot G_\text{address} + \text{rand}_b \cdot G_\text{randomness} + \text{Bob note slot} \cdot G_\text{slot}
-$$
-
-Then we just emit `P_a.x` and `P_b.x` as a note hashes, and we're done!
-
-### Private Fee Payment Implementation
-
-TODO(#12414): `setup_refund` no longer exists.
-
-We can see the complete implementation of creating and completing partial notes in an Aztec contract in the `setup_refund` and `complete_refund` functions.
-
-#### `fee_entrypoint_private`
-
-```rust title="fee_entrypoint_private" showLineNumbers
-#[external("private")]
-fn fee_entrypoint_private(max_fee: u128, authwit_nonce: Field) {
-    let accepted_asset = storage.config.read().accepted_asset;
-
-    let user = context.msg_sender().unwrap();
-    let token = Token::at(accepted_asset);
-
-    // TODO(#10805): Here we should check that `max_fee` converted to fee juice is enough to cover the tx
-    // fee juice/mana/gas limit. Currently the fee juice/AA exchange rate is fixed 1:1.
-
-    // Pull the max fee from the user's balance of the accepted asset to the public balance of this contract.
-    token.transfer_to_public(user, context.this_address(), max_fee, authwit_nonce).call(
-        &mut context,
-    );
-
-    // Prepare a partial note for the refund for the user.
-    let partial_note = token.prepare_private_balance_increase(user).call(&mut context);
-
-    // Set a public teardown function in which the refund will be paid back to the user by finalizing the partial note.
-    FPC::at(context.this_address())
-        ._complete_refund(accepted_asset, partial_note, max_fee)
-        .set_as_teardown(&mut context);
-
-    // Set the FPC as the fee payer of the tx.
-    context.set_as_fee_payer();
-    // End the setup phase, from now on all side effects are revertible
-    context.end_setup();
+```rust
+pub struct UintNote {
+    owner: AztecAddress,    // Private field
+    randomness: Field,      // Private field
+    value: u128,            // Public field
 }
 ```
 
-> <sup><sub><a href="https://github.com/AztecProtocol/aztec-packages/blob/v3.0.0-devnet.5/noir-projects/noir-contracts/contracts/fees/fpc_contract/src/main.nr#L78-L107" target="_blank" rel="noopener noreferrer">Source code: noir-projects/noir-contracts/contracts/fees/fpc_contract/src/main.nr#L78-L107</a></sub></sup>
+When creating the note locally, while in private execution, the `owner` is known, but the `value` potentially is not, e.g., it is some onchain dynamic variable. First, a **partial note** can be created during private execution that contains the `owner` and `randomness`, and then the note is *”completed”* to create a full note by later adding the `value` field, usually during public execution.
 
-The `fee_entrypoint_private` function sets the `complete_refund` function to be called at the end of the public function execution (`set_public_teardown_function`).
-This ensures that the refund partial note will be completed for the user.
+<Image img={require("@site/static/img/partial-notes.png")} />
 
-#### `complete_refund`
+## Use Cases
 
-```rust title="complete_refund" showLineNumbers
-#[external("public")]
-#[internal]
-fn _complete_refund(
-    accepted_asset: AztecAddress,
-    partial_note: PartialUintNote,
-    max_fee: u128,
-) {
-    let tx_fee = safe_cast_to_u128(context.transaction_fee());
+Partial notes are useful when a e.g., part of the note struct is a value that depends on dynamic, public onchain data that isn't available during private execution, such as:
 
-    // 1. Check that user funded the fee payer contract with at least the transaction fee.
-    // TODO(#10805): Nuke this check once we have a proper max_fee check in the fee_entrypoint_private.
-    assert(max_fee >= tx_fee, "max fee not enough to cover tx fee");
+- AMM swap prices
+- Current gas prices
+- Time-dependent interest accrual
 
-    // 2. Compute the refund amount as the difference between funded amount and the tx fee.
-    // TODO(#10805): Introduce a real exchange rate
-    let refund_amount = max_fee - tx_fee;
+## Implementation
 
-    Token::at(accepted_asset).finalize_transfer_to_private(refund_amount, partial_note).call(
-        &mut context,
-    );
+All notes contain partial notes and use nested hash commitments. This is best explained using an example.
+
+### Note Structure Example
+
+Consider the `UintNote` structure again:
+
+```rust
+pub struct UintNote {
+    owner: AztecAddress,    // Private field
+    randomness: Field,       // Private field
+    value: u128,            // Public field
 }
+
 ```
 
-> <sup><sub><a href="https://github.com/AztecProtocol/aztec-packages/blob/v3.0.0-devnet.5/noir-projects/noir-contracts/contracts/fees/fpc_contract/src/main.nr#L111-L133" target="_blank" rel="noopener noreferrer">Source code: noir-projects/noir-contracts/contracts/fees/fpc_contract/src/main.nr#L111-L133</a></sub></sup>
+### Two-Phase Commitment Process
 
-## Note discovery
+**Phase 1: Partial Commitment (Private Execution)**
 
-Note discovery is detailed [here](./note_discovery.md). Partial notes are handled very similarly, where the partial note creator will add a tag to the beginning of the encrypted log, like a regular note, but the contract knows that it is a partial note and is missing a public component. The contract puts the unfinished note and the public log that will be emitted to complete the note into the PXE's database. When the public log is emitted, the recipient's PXE has all of the info about the note and the partial note is completed. This method of discovery allows partial notes to be started and completed in separate transactions.
+The private fields are committed during local execution:
 
-## Future work
+```rust
+let commitment = UintPartialNotePrivateContent { owner, randomness }
+    .compute_partial_commitment(storage_slot);
 
-This pattern of making public commitments to notes that can be modified by another party, privately, can be generalized to work with different kinds of applications. The Aztec labs team is working on adding libraries and tooling to make this easier to implement in your own contracts.
+fn compute_partial_commitment(self, storage_slot: Field) -> Field {
+    poseidon2_hash_with_separator(
+        self.pack().concat([storage_slot]),
+        GENERATOR_INDEX__NOTE_HASH,
+    )
+}
+
+```
+
+Here, we are creating a partial note commitment:
+
+```
+partial_commitment = H(owner, randomness, storage_slot)
+```
+
+**Phase 2: Note Completion (Public Execution)**
+
+The sequencer completes the note by hashing the partial commitment with the public value:
+
+```rust
+fn compute_complete_note_hash(self, value: u128) -> Field {
+    poseidon2_hash_with_separator(
+        [self.commitment, value.to_field()],
+        GENERATOR_INDEX__NOTE_HASH,
+    )
+}
+
+```
+
+The resulting structure is a nested commitment:
+
+```
+note_hash = H(H(owner, randomness, storage_slot), value)
+          = H(partial_commitment, value)
+
+```
+
+## Universal Note Format
+
+All notes in Aztec use the partial note format internally, even when all data is known during private execution. This ensures consistent note hash computation regardless of how the note was created.
+
+When a note is created with all fields known:
+
+1. A partial commitment is computed from the initial fields
+2. The partial commitment is immediately completed with the other field
+
+```rust
+fn compute_note_hash(self, storage_slot: Field) -> Field {
+    // Step 1: Create partial note from private content
+    let private_content =
+        UintPartialNotePrivateContent { owner: self.owner, randomness: self.randomness };
+    let partial_note = PartialUintNote {
+        commitment: private_content.compute_partial_commitment(storage_slot),
+    };
+
+    // Step 2: Complete the note hash with public value
+    partial_note.compute_complete_note_hash(self.value)
+}
+
+```
+
+This two-step process ensures that notes with identical field values produce identical note hashes, regardless of whether they were created as partial notes or complete notes.
+
+<Image img={require("@site/static/img/shrek.jpeg")} />
+
+## Partial Notes in Practice
+
+To understand how to use partial notes in practice, [this AMM contract](https://github.com/AztecProtocol/aztec-packages/tree/next/noir-projects/noir-contracts/contracts/app/amm_contract) uses partial notes to initiate and complete the swap of `token1` to `token2`. Since the exchange rate is onchain, it cannot be known ahead of time while executing in private so a full note cannot be created. Instead, a partial note is created for the `owner` swapping the tokens. This partial note is then completed during public execution once the exchange rate can be read.
