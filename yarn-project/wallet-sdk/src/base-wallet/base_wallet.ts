@@ -24,7 +24,7 @@ import type { ChainInfo } from '@aztec/entrypoints/interfaces';
 import { Fr } from '@aztec/foundation/fields';
 import { createLogger } from '@aztec/foundation/log';
 import type { FieldsOf } from '@aztec/foundation/types';
-import type { PXE } from '@aztec/pxe/server';
+import type { PXE, PackedPrivateEvent } from '@aztec/pxe/server';
 import {
   type ContractArtifact,
   type EventMetadataDefinition,
@@ -332,12 +332,12 @@ export abstract class BaseWallet implements Wallet {
   ): Promise<PrivateEvent<T>[]> {
     const pxeEvents = await this.pxe.getPrivateEvents(eventDef.eventSelector, eventFilter);
 
-    const decodedEvents = pxeEvents.map((pxeEvent: any /** PrivateEvent */): PrivateEvent<T> => {
+    const decodedEvents = pxeEvents.map((pxeEvent: PackedPrivateEvent): PrivateEvent<T> => {
       return {
-        event: decodeFromAbi([eventDef.abiType], pxeEvent.msgContent) as T,
+        event: decodeFromAbi([eventDef.abiType], pxeEvent.packedEvent) as T,
         metadata: {
-          blockNumber: pxeEvent.blockNumber,
-          blockHash: pxeEvent.blockHash,
+          l2BlockNumber: pxeEvent.l2BlockNumber,
+          l2BlockHash: pxeEvent.l2BlockHash,
           txHash: pxeEvent.txHash,
           recipient: pxeEvent.recipient,
         },

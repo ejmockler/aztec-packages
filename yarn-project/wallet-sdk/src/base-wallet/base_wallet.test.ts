@@ -3,7 +3,7 @@ import type { AztecNode } from '@aztec/aztec.js/node';
 import type { Aliased } from '@aztec/aztec.js/wallet';
 import { Fr } from '@aztec/foundation/fields';
 import { TokenContract, type Transfer } from '@aztec/noir-contracts.js/Token';
-import { PXE, type PrivateEvent } from '@aztec/pxe/server';
+import { PXE, type PackedPrivateEvent } from '@aztec/pxe/server';
 import { AztecAddress } from '@aztec/stdlib/aztec-address';
 import { L2BlockHash } from '@aztec/stdlib/block';
 import { TxHash } from '@aztec/stdlib/tx';
@@ -51,12 +51,12 @@ describe('BaseWallet', () => {
   }
 
   // eslint-disable-next-line jsdoc/require-jsdoc
-  async function privateEventFor(serial: Fr[]): Promise<PrivateEvent> {
+  async function privateEventFor(serial: Fr[]): Promise<PackedPrivateEvent> {
     return {
       packedEvent: serial,
       recipient: await AztecAddress.random(),
-      blockHash: L2BlockHash.random(),
-      blockNumber: 42,
+      l2BlockHash: L2BlockHash.random(),
+      l2BlockNumber: 42,
       txHash: TxHash.random(),
       eventSelector: TokenContract.events.Transfer.eventSelector,
     };

@@ -300,8 +300,8 @@ export const EventMetadataDefinitionSchema = z.object({
 });
 
 export const PrivateEventMetadataDefinitionSchema = z.object({
-  blockNumber: z.number(),
-  blockHash: L2BlockHash.schema,
+  l2BlockNumber: z.number(),
+  l2BlockHash: L2BlockHash.schema,
   txHash: TxHash.schema,
   recipient: schemas.AztecAddress,
 });

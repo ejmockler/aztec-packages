@@ -23,7 +23,7 @@ import { mock } from 'jest-mock-extended';
 import type { MockProxy } from 'jest-mock-extended/lib/Mock.js';
 
 import type { PXEConfig } from './config/index.js';
-import { PXE, type PrivateEvent } from './pxe.js';
+import { PXE, type PackedPrivateEvent } from './pxe.js';
 import { PrivateEventDataProvider } from './storage/index.js';
 
 describe('PXE', () => {
@@ -156,16 +156,16 @@ describe('PXE', () => {
   describe('getPrivateEvents', () => {
     let contractAddress: AztecAddress;
     let eventSelector: EventSelector;
-    let blockNumber: number;
-    let blockHash: L2BlockHash;
+    let l2BlockNumber: number;
+    let l2BlockHash: L2BlockHash;
     let recipient: AztecAddress;
     let privateEventDataProvider: PrivateEventDataProvider;
 
     beforeEach(async () => {
       // Set up basic state
-      blockNumber = 42;
+      l2BlockNumber = 42;
       const globalVariables = GlobalVariables.empty({
-        blockNumber,
+        blockNumber: l2BlockNumber,
       });
       const blockHeader = BlockHeader.empty({
         globalVariables,
@@ -190,18 +190,18 @@ describe('PXE', () => {
 
       contractAddress = contractInstance.address;
       eventSelector = EventSelector.random();
-      blockHash = L2BlockHash.random();
+      l2BlockHash = L2BlockHash.random();
 
       recipient = await AztecAddress.random();
 
       privateEventDataProvider = new PrivateEventDataProvider(kvStore);
     });
 
-    async function storeEvent(index: number): Promise<PrivateEvent> {
+    async function storeEvent(index: number): Promise<PackedPrivateEvent> {
       const event = {
         packedEvent: [Fr.random(), Fr.random()],
-        blockNumber,
-        blockHash,
+        l2BlockNumber,
+        l2BlockHash,
         txHash: TxHash.random(),
         recipient,
         eventSelector,
@@ -214,8 +214,8 @@ describe('PXE', () => {
         event.packedEvent,
         event.txHash,
         index,
-        blockNumber,
-        blockHash,
+        l2BlockNumber,
+        l2BlockHash,
       );
 
       return event;
@@ -228,7 +228,7 @@ describe('PXE', () => {
 
       const events = await pxe.getPrivateEvents(eventSelector, {
         contractAddress,
-        fromBlock: blockNumber,
+        fromBlock: l2BlockNumber,
         recipients: [recipient],
       });
 
@@ -238,7 +238,7 @@ describe('PXE', () => {
     it('returns no events', async () => {
       const events = await pxe.getPrivateEvents(eventSelector, {
         contractAddress,
-        fromBlock: blockNumber,
+        fromBlock: l2BlockNumber,
         recipients: [recipient],
       });
 
@@ -252,7 +252,7 @@ describe('PXE', () => {
       await expect(
         pxe.getPrivateEvents(eventSelector, {
           contractAddress,
-          fromBlock: blockNumber,
+          fromBlock: l2BlockNumber,
           recipients: [],
         }),
       ).rejects.toThrow(/Recipients are required/);

@@ -7,7 +7,7 @@ import type { AztecAddress } from '@aztec/stdlib/aztec-address';
 import { L2BlockHash } from '@aztec/stdlib/block';
 import { TxHash } from '@aztec/stdlib/tx';
 
-import type { PrivateEvent } from '../../pxe.js';
+import type { PackedPrivateEvent } from '../../pxe.js';
 
 interface PrivateEventEntry {
   msgContent: Buffer;
@@ -102,8 +102,8 @@ export class PrivateEventDataProvider {
     toBlock: number,
     recipients: AztecAddress[],
     eventSelector: EventSelector,
-  ): Promise<PrivateEvent[]> {
-    const events: Array<{ eventCommitmentIndex: number; event: PrivateEvent }> = [];
+  ): Promise<PackedPrivateEvent[]> {
+    const events: Array<{ eventCommitmentIndex: number; event: PackedPrivateEvent }> = [];
 
     for (const recipient of recipients) {
       const key = `${contractAddress.toString()}_${recipient.toString()}_${eventSelector.toString()}`;
@@ -120,16 +120,16 @@ export class PrivateEventDataProvider {
         const numFields = entry.msgContent.length / Fr.SIZE_IN_BYTES;
         const msgContent = reader.readArray(numFields, Fr);
         const txHash = TxHash.fromBuffer(entry.txHash);
-        const blockHash = L2BlockHash.fromBuffer(entry.blockHash);
+        const l2BlockHash = L2BlockHash.fromBuffer(entry.blockHash);
 
         events.push({
           eventCommitmentIndex: entry.eventCommitmentIndex,
           event: {
             packedEvent: msgContent,
-            blockNumber: entry.blockNumber,
+            l2BlockNumber: entry.blockNumber,
             recipient,
             txHash,
-            blockHash,
+            l2BlockHash,
             eventSelector,
           },
         });

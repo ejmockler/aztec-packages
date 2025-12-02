@@ -19,7 +19,6 @@ import {
 } from '@aztec/stdlib/abi';
 import type { AuthWitness } from '@aztec/stdlib/auth-witness';
 import type { AztecAddress } from '@aztec/stdlib/aztec-address';
-import type { InBlock } from '@aztec/stdlib/block';
 import {
   CompleteAddress,
   type ContractClassWithId,
@@ -81,7 +80,7 @@ import { SyncDataProvider } from './storage/sync_data_provider/sync_data_provide
 import { TaggingDataProvider } from './storage/tagging_data_provider/tagging_data_provider.js';
 import { Synchronizer } from './synchronizer/index.js';
 
-export type PrivateEvent = InTx & {
+export type PackedPrivateEvent = InTx & {
   packedEvent: Fr[];
   recipient: AztecAddress;
   eventSelector: EventSelector;
@@ -1054,7 +1053,10 @@ export class PXE {
    * @param recipients - The addresses that decrypted the logs.
    * @returns - The packed events with block and tx metadata.
    */
-  public async getPrivateEvents(eventSelector: EventSelector, filter: PrivateEventFilter): Promise<PrivateEvent[]> {
+  public async getPrivateEvents(
+    eventSelector: EventSelector,
+    filter: PrivateEventFilter,
+  ): Promise<PackedPrivateEvent[]> {
     // Maybe we should reconsider the lint rule that forces const definitions on
     // every declaration that is not re-assigned, as it forces us to do things as
     // below for little gain (or at least disable the rule for destructuring assignments like these).
