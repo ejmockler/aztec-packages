@@ -14,6 +14,172 @@ import type { EthAccounts, KeyStore } from './types.js';
 const logger = createLogger('node-keystore:loader');
 
 /**
+ * Sensitive field names that should be redacted from error messages
+ */
+const SENSITIVE_FIELDS = ['password', 'certPass', 'mnemonic'];
+
+/**
+ * Sanitizes sensitive fields from an object or string representation.
+ * Recursively removes or redacts sensitive fields to prevent them from appearing in logs.
+ */
+function sanitizeErrorData(data: unknown): unknown {
+  if (data === null || data === undefined) {
+    return data;
+  }
+
+  if (typeof data === 'string') {
+    // Try to parse as JSON and sanitize, otherwise return as-is
+    try {
+      const parsed = JSON.parse(data);
+      return JSON.stringify(sanitizeErrorData(parsed));
+    } catch {
+      // Not JSON, check if it looks like a private key (0x followed by 64 hex chars)
+      if (/^0x[0-9a-fA-F]{64}$/i.test(data)) {
+        return '[REDACTED_PRIVATE_KEY]';
+      }
+      return data;
+    }
+  }
+
+  if (Array.isArray(data)) {
+    return data.map(item => sanitizeErrorData(item));
+  }
+
+  if (typeof data === 'object') {
+    const sanitized: Record<string, unknown> = {};
+    for (const [key, value] of Object.entries(data)) {
+      if (SENSITIVE_FIELDS.includes(key.toLowerCase())) {
+        sanitized[key] = '[REDACTED]';
+      } else if (typeof value === 'string' && /^0x[0-9a-fA-F]{64}$/i.test(value) && key !== 'feeRecipient') {
+        // Redact private keys
+        sanitized[key] = '[REDACTED_PRIVATE_KEY]';
+      } else {
+        sanitized[key] = sanitizeErrorData(value);
+      }
+    }
+    return sanitized;
+  }
+
+  return data;
+}
+
+/**
+ * Sanitizes a Zod error message to remove sensitive data.
+ * Handles both the error message string and any received data in the error.
+ * @param error - The Zod error object
+ * @param receivedData - Optional parsed data that was being validated (to show what was received)
+ */
+function sanitizeZodError(error: unknown, receivedData?: unknown): string {
+  if (!error || typeof error !== 'object') {
+    const errorStr = String(error);
+    // Check if the string itself contains JSON with sensitive data
+    return sanitizeStringForSensitiveData(errorStr);
+  }
+
+  const zodError = error as { issues?: unknown[]; received?: unknown; message?: string };
+  const issues = zodError.issues ?? [];
+
+  // Build error message from issues
+  let message =
+    issues
+      .map((e: any) => {
+        const path = Array.isArray(e.path) ? e.path.join('.') : String(e.path ?? 'root');
+        // Sanitize the issue message itself in case it contains sensitive data
+        const sanitizedMsg = sanitizeStringForSensitiveData(e.message || '');
+        return `${sanitizedMsg} (${path})`;
+      })
+      .join('. ') || 'Schema validation error';
+
+  // Include received data if available (either from error object or passed parameter)
+  const dataToInclude = zodError.received !== undefined ? zodError.received : receivedData;
+  if (dataToInclude !== undefined) {
+    const sanitized = sanitizeErrorData(dataToInclude);
+    // Only append received data if it's not too large (avoid huge error messages)
+    // For strict validation errors, show the relevant part of the object
+    const sanitizedStr = JSON.stringify(sanitized);
+    if (sanitizedStr.length < 1000) {
+      message = `${message}. Received: ${sanitizedStr}`;
+    } else {
+      // If too large, try to extract just the problematic path
+      const firstIssue = issues[0] as any;
+      if (firstIssue?.path && Array.isArray(firstIssue.path)) {
+        let relevantData: unknown = dataToInclude;
+        for (const key of firstIssue.path) {
+          if (relevantData && typeof relevantData === 'object' && key in relevantData) {
+            relevantData = (relevantData as Record<string, unknown>)[key];
+          } else {
+            relevantData = undefined;
+            break;
+          }
+        }
+        if (relevantData !== undefined) {
+          const sanitizedRelevant = sanitizeErrorData(relevantData);
+          const relevantStr = JSON.stringify(sanitizedRelevant);
+          if (relevantStr.length < 500) {
+            message = `${message}. Received at ${firstIssue.path.join('.')}: ${relevantStr}`;
+          }
+        }
+      }
+    }
+  }
+
+  // If no issues were found but there's a message, use and sanitize it
+  if (issues.length === 0 && zodError.message) {
+    message = sanitizeStringForSensitiveData(zodError.message);
+  } else if (zodError.message) {
+    // If we have both issues and a message, sanitize the message and append it
+    const sanitizedMsg = sanitizeStringForSensitiveData(zodError.message);
+    if (sanitizedMsg !== message) {
+      message = `${message}. ${sanitizedMsg}`;
+    }
+  }
+
+  // Final sanitization pass to catch any remaining sensitive data
+  return sanitizeStringForSensitiveData(message);
+}
+
+/**
+ * Sanitizes a string that might contain JSON with sensitive data.
+ * Attempts to parse and sanitize JSON, otherwise redacts patterns that look like sensitive values.
+ */
+function sanitizeStringForSensitiveData(str: string): string {
+  let sanitized = str;
+
+  // First, try to redact sensitive field values directly using regex
+  // This handles both complete and incomplete JSON, and various formatting
+  for (const field of SENSITIVE_FIELDS) {
+    // Match patterns like: "password":"value" or "password": "value" or "password":"value", etc.
+    // Handle both quoted and unquoted values, and incomplete JSON
+    const fieldPattern = new RegExp(`("${field}"\\s*:\\s*")[^",}\\]]*`, 'gi');
+    sanitized = sanitized.replace(fieldPattern, '$1[REDACTED]');
+
+    // Also handle single quotes and unquoted keys
+    const fieldPatternAlt = new RegExp(`(['"]${field}['"]\\s*:\\s*['"])[^'",}\\]]*`, 'gi');
+    sanitized = sanitized.replace(fieldPatternAlt, '$1[REDACTED]');
+  }
+
+  // Try to find and sanitize complete JSON objects
+  // Look for JSON-like structures (may be incomplete)
+  const jsonLikePattern = /\{[^{}]*"(?:password|certPass|mnemonic)"[^{}]*\}/gi;
+  sanitized = sanitized.replace(jsonLikePattern, match => {
+    try {
+      // Try to parse as complete JSON
+      const parsed = JSON.parse(match);
+      const sanitizedObj = sanitizeErrorData(parsed);
+      return JSON.stringify(sanitizedObj);
+    } catch {
+      // If parsing fails, the regex replacement above should have already handled it
+      return match;
+    }
+  });
+
+  // Redact private keys (0x followed by 64 hex chars) that might appear in the string
+  sanitized = sanitized.replace(/0x[0-9a-fA-F]{64}/gi, '[REDACTED_PRIVATE_KEY]');
+
+  return sanitized;
+}
+
+/**
  * Error thrown when keystore loading fails
  */
 export class KeyStoreLoadError extends Error {
@@ -37,25 +203,39 @@ export class KeyStoreLoadError extends Error {
 export function loadKeystoreFile(filePath: string): KeyStore {
   try {
     const content = readFileSync(filePath, 'utf-8');
+    let parsedData: unknown;
 
-    // Parse JSON and validate with Zod schema (following Aztec patterns)
-    return keystoreSchema.parse(JSON.parse(content));
+    try {
+      parsedData = JSON.parse(content);
+    } catch (parseError) {
+      if (parseError instanceof SyntaxError) {
+        throw new KeyStoreLoadError('Invalid JSON format', filePath, parseError);
+      }
+      throw parseError;
+    }
+
+    // Validate with Zod schema (following Aztec patterns)
+    return keystoreSchema.parse(parsedData);
   } catch (error) {
-    if (error instanceof SyntaxError) {
-      throw new KeyStoreLoadError('Invalid JSON format', filePath, error);
+    if (error instanceof KeyStoreLoadError) {
+      throw error;
     }
     if (error && typeof error === 'object' && 'issues' in error) {
-      const issues = (error as any).issues ?? [];
-      const message =
-        issues
-          .map((e: any) => {
-            const path = Array.isArray(e.path) ? e.path.join('.') : String(e.path ?? 'root');
-            return `${e.message} (${path})`;
-          })
-          .join('. ') || 'Schema validation error';
-      throw new KeyStoreLoadError(`Schema validation failed: ${message}`, filePath, error as unknown as Error);
+      // Get the parsed data from the error if available, or try to parse the file again
+      let receivedData: unknown = undefined;
+      try {
+        const content = readFileSync(filePath, 'utf-8');
+        receivedData = JSON.parse(content);
+      } catch {
+        // If we can't read/parse, that's okay - we'll just use the error message
+      }
+
+      const sanitizedMessage = sanitizeZodError(error, receivedData);
+      throw new KeyStoreLoadError(`Schema validation failed: ${sanitizedMessage}`, filePath, error as unknown as Error);
     }
-    throw new KeyStoreLoadError(`Unexpected error: ${String(error)}`, filePath, error as Error);
+    // Sanitize unexpected errors as well in case they contain sensitive data
+    const errorMessage = typeof error === 'object' && error !== null ? sanitizeZodError(error) : String(error);
+    throw new KeyStoreLoadError(`Unexpected error: ${errorMessage}`, filePath, error as Error);
   }
 }
 
@@ -223,8 +403,10 @@ export function mergeKeystores(keystores: KeyStore[]): KeyStore {
         const attesterKeys = extractAttesterKeys(validator.attester);
         for (const key of attesterKeys) {
           if (attesterAddresses.has(key)) {
+            // Sanitize the key before including it in the error message to prevent sensitive data leakage
+            const sanitizedKey = sanitizeStringForSensitiveData(key);
             throw new KeyStoreLoadError(
-              `Duplicate attester address ${key} found across keystore files`,
+              `Duplicate attester address ${sanitizedKey} found across keystore files`,
               `keystores[${i}].validators`,
             );
           }
