@@ -38,9 +38,17 @@ describe('e2e_token_contract transfer private', () => {
     });
 
     expect(events[0]).toEqual({
-      from: adminAddress,
-      to: account1Address,
-      amount: amount,
+      event: {
+        from: adminAddress,
+        to: account1Address,
+        amount: amount,
+      },
+      metadata: {
+        l2BlockNumber: tx.blockNumber,
+        l2BlockHash: tx.blockHash,
+        txHash: tx.txHash,
+        recipient: account1Address,
+      },
     });
   });
 

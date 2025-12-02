@@ -61,13 +61,12 @@ describe('Logs', () => {
 
       const firstBlockNumber = Math.min(...txs.map(tx => tx.blockNumber!));
       const lastBlockNumber = Math.max(...txs.map(tx => tx.blockNumber!));
-      const numBlocks = lastBlockNumber - firstBlockNumber + 1;
 
       const eventFilter: PrivateEventFilter = {
         contractAddress: testLogContract.address,
         fromBlock: firstBlockNumber,
-        toBlock: firstBlockNumber + numBlocks,
-        recipients: [account1Address],
+        toBlock: lastBlockNumber + 1,
+        recipients: [account1Address, account2Address],
       };
 
       // Each emit_encrypted_events call emits 2 ExampleEvent0s and 1 ExampleEvent1

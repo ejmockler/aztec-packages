@@ -77,7 +77,7 @@ describe('e2e_offchain_effect', () => {
       contract1.methods.emit_event_as_offchain_message_for_msg_sender(a, b, c),
       { from: defaultAccountAddress },
     );
-    const { txHash, blockNumber } = await provenTx.send().wait();
+    const { txHash, blockNumber, blockHash } = await provenTx.send().wait();
 
     const offchainEffects = provenTx.offchainEffects;
     expect(offchainEffects).toHaveLength(1);
@@ -115,9 +115,17 @@ describe('e2e_offchain_effect', () => {
 
     expect(events.length).toBe(1);
     expect(events[0]).toEqual({
-      a,
-      b,
-      c,
+      event: {
+        a,
+        b,
+        c,
+      },
+      metadata: {
+        l2BlockNumber: blockNumber,
+        l2BlockHash: blockHash,
+        txHash,
+        recipient,
+      },
     });
   });
 

@@ -38,9 +38,17 @@ describe('e2e_token_contract private transfer recursion', () => {
     });
 
     expect(events[0]).toEqual({
-      from: adminAddress,
-      to: account1Address,
-      amount: totalBalance,
+      event: {
+        from: adminAddress,
+        to: account1Address,
+        amount: totalBalance,
+      },
+      metadata: {
+        l2BlockNumber: tx.blockNumber,
+        l2BlockHash: tx.blockHash,
+        txHash: tx.txHash,
+        recipient: account1Address,
+      },
     });
   });
 
@@ -70,9 +78,17 @@ describe('e2e_token_contract private transfer recursion', () => {
     });
 
     expect(events[0]).toEqual({
-      from: adminAddress,
-      to: account1Address,
-      amount: toSend,
+      event: {
+        from: adminAddress,
+        to: account1Address,
+        amount: toSend,
+      },
+      metadata: {
+        l2BlockNumber: tx.blockNumber,
+        l2BlockHash: tx.blockHash,
+        txHash: tx.txHash,
+        recipient: account1Address,
+      },
     });
   });
 
