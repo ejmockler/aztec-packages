@@ -1,4 +1,5 @@
 import { L1_TO_L2_MSG_SUBTREE_HEIGHT } from '@aztec/constants';
+import { SlotNumber } from '@aztec/foundation/branded-types';
 import { SecretValue, getActiveNetworkName } from '@aztec/foundation/config';
 import { keccak256String } from '@aztec/foundation/crypto';
 import { EthAddress } from '@aztec/foundation/eth-address';
@@ -487,9 +488,9 @@ export const deploySharedContracts = async (
   const rewardDistributorAddress = await registry.getRewardDistributor();
 
   if (!args.existingTokenAddress) {
-    const blockReward = getRewardConfig(networkName).blockReward;
+    const checkpointReward = getRewardConfig(networkName).checkpointReward;
 
-    const funding = blockReward * 200000n;
+    const funding = checkpointReward * 200000n;
     const { txHash: fundRewardDistributorTxHash } = await deployer.sendTransaction({
       to: feeAssetAddress.toString(),
       data: encodeFunctionData({
@@ -863,7 +864,8 @@ export const deployRollup = async (
     aztecSlotDuration: BigInt(args.aztecSlotDuration),
     aztecEpochDuration: BigInt(args.aztecEpochDuration),
     targetCommitteeSize: BigInt(args.aztecTargetCommitteeSize),
-    lagInEpochs: BigInt(args.lagInEpochs),
+    lagInEpochsForValidatorSet: BigInt(args.lagInEpochsForValidatorSet),
+    lagInEpochsForRandao: BigInt(args.lagInEpochsForRandao),
     aztecProofSubmissionEpochs: BigInt(args.aztecProofSubmissionEpochs),
     slashingQuorum: BigInt(args.slashingQuorum ?? (args.slashingRoundSizeInEpochs * args.aztecEpochDuration) / 2 + 1),
     slashingRoundSize: BigInt(args.slashingRoundSizeInEpochs * args.aztecEpochDuration),
@@ -1518,13 +1520,13 @@ export const deployL1Contracts = async (
       // Need to get the time
       const currentSlot = await rollup.getSlotNumber();
 
-      if (BigInt(currentSlot) === 0n) {
-        const ts = Number(await rollup.getTimestampForSlot(1n));
+      if (currentSlot === 0) {
+        const ts = Number(await rollup.getTimestampForSlot(SlotNumber(1)));
         await rpcCall('evm_setNextBlockTimestamp', [ts]);
         await rpcCall('hardhat_mine', [1]);
         const currentSlot = await rollup.getSlotNumber();
 
-        if (BigInt(currentSlot) !== 1n) {
+        if (currentSlot !== 1) {
           throw new Error(`Error jumping time: current slot is ${currentSlot}`);
         }
         logger.info(`Jumped to slot 1`);
