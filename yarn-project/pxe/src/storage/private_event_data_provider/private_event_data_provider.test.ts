@@ -58,13 +58,12 @@ describe('PrivateEventDataProvider', () => {
       l2BlockNumber,
       l2BlockHash,
     );
-    const events = await privateEventDataProvider.getPrivateEvents(
+    const events = await privateEventDataProvider.getPrivateEvents(eventSelector, {
       contractAddress,
-      l2BlockNumber,
-      l2BlockNumber + 1,
-      [recipient],
-      eventSelector,
-    );
+      fromBlock: l2BlockNumber,
+      toBlock: l2BlockNumber + 1,
+      recipients: [recipient],
+    });
     expect(events).toEqual([expectedEvent]);
   });
 
@@ -89,13 +88,14 @@ describe('PrivateEventDataProvider', () => {
       l2BlockNumber,
       l2BlockHash,
     );
-    const events = await privateEventDataProvider.getPrivateEvents(
+
+    const events = await privateEventDataProvider.getPrivateEvents(eventSelector, {
       contractAddress,
-      l2BlockNumber,
-      l2BlockNumber + 1,
-      [recipient],
-      eventSelector,
-    );
+      fromBlock: l2BlockNumber,
+      toBlock: l2BlockNumber + 1,
+      recipients: [recipient],
+    });
+
     expect(events).toEqual([expectedEvent]);
   });
 
@@ -121,13 +121,14 @@ describe('PrivateEventDataProvider', () => {
       l2BlockNumber,
       l2BlockHash,
     );
-    const events = await privateEventDataProvider.getPrivateEvents(
+
+    const events = await privateEventDataProvider.getPrivateEvents(eventSelector, {
       contractAddress,
-      l2BlockNumber,
-      l2BlockNumber + 1,
-      [recipient],
-      eventSelector,
-    );
+      fromBlock: l2BlockNumber,
+      toBlock: l2BlockNumber + 1,
+      recipients: [recipient],
+    });
+
     expect(events).toEqual([expectedEvent, expectedEvent]);
   });
 
@@ -169,13 +170,12 @@ describe('PrivateEventDataProvider', () => {
       l2BlockHash,
     );
 
-    const events = await privateEventDataProvider.getPrivateEvents(
+    const events = await privateEventDataProvider.getPrivateEvents(eventSelector, {
       contractAddress,
-      150,
-      150 + 100,
-      [recipient],
-      eventSelector,
-    );
+      fromBlock: 150,
+      toBlock: 150 + 100,
+      recipients: [recipient],
+    });
 
     expect(events).toEqual([expectedEvent]); // Only includes event from block 200
   });
@@ -203,24 +203,24 @@ describe('PrivateEventDataProvider', () => {
       l2BlockHash,
     );
 
-    const events = await privateEventDataProvider.getPrivateEvents(
+    const events = await privateEventDataProvider.getPrivateEvents(eventSelector, {
       contractAddress,
-      l2BlockNumber,
-      l2BlockNumber + 1,
-      [recipient],
-      eventSelector,
-    );
+      fromBlock: l2BlockNumber,
+      toBlock: l2BlockNumber + 1,
+      recipients: [recipient],
+    });
+
     expect(events).toEqual([expectedEvent]);
   });
 
   it('returns empty array when no events match criteria', async () => {
-    const events = await privateEventDataProvider.getPrivateEvents(
+    const events = await privateEventDataProvider.getPrivateEvents(eventSelector, {
       contractAddress,
-      l2BlockNumber,
-      l2BlockNumber + 1,
-      [recipient],
-      eventSelector,
-    );
+      fromBlock: l2BlockNumber,
+      toBlock: l2BlockNumber + 1,
+      recipients: [recipient],
+    });
+
     expect(events).toEqual([]);
   });
 
@@ -269,13 +269,12 @@ describe('PrivateEventDataProvider', () => {
         l2BlockHash,
       );
 
-      const events = await privateEventDataProvider.getPrivateEvents(
+      const events = await privateEventDataProvider.getPrivateEvents(eventSelector, {
         contractAddress,
-        0,
-        0 + 1000,
-        [recipient],
-        eventSelector,
-      );
+        fromBlock: 0,
+        toBlock: 0 + 1000,
+        recipients: [recipient],
+      });
 
       expect(events.map(e => e.packedEvent)).toEqual([msgContent1, msgContent2, msgContent3]);
     });

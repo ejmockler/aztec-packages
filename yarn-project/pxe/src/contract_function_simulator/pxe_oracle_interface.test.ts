@@ -601,13 +601,12 @@ describe('PXEOracleInterface', () => {
       await deliverEvent();
 
       // I should be able to retrieve the private event I just saved using getPrivateEvents
-      const result = await privateEventDataProvider.getPrivateEvents(
+      const result = await privateEventDataProvider.getPrivateEvents(eventSelector, {
         contractAddress,
-        blockNumber,
-        blockNumber + 1,
-        [recipient.address],
-        eventSelector,
-      );
+        fromBlock: blockNumber,
+        toBlock: blockNumber + 1,
+        recipients: [recipient.address],
+      });
 
       expect(result.length).toEqual(1);
       expect(result[0].packedEvent).toEqual(eventContent);

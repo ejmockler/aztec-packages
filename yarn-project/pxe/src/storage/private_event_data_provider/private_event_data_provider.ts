@@ -97,21 +97,23 @@ export class PrivateEventDataProvider {
    * @returns - The event log contents.
    */
   public async getPrivateEvents(
-    contractAddress: AztecAddress,
-    fromBlock: number,
-    toBlock: number,
-    recipients: AztecAddress[],
     eventSelector: EventSelector,
+    filters: {
+      contractAddress: AztecAddress;
+      fromBlock: number;
+      toBlock: number;
+      recipients: AztecAddress[];
+    },
   ): Promise<PackedPrivateEvent[]> {
     const events: Array<{ eventCommitmentIndex: number; event: PackedPrivateEvent }> = [];
 
-    for (const recipient of recipients) {
-      const key = `${contractAddress.toString()}_${recipient.toString()}_${eventSelector.toString()}`;
+    for (const recipient of filters.recipients) {
+      const key = `${filters.contractAddress.toString()}_${recipient.toString()}_${eventSelector.toString()}`;
       const indices = (await this.#eventLogIndex.getAsync(key)) || [];
 
       for (const index of indices) {
         const entry = await this.#eventLogs.atAsync(index);
-        if (!entry || entry.blockNumber < fromBlock || entry.blockNumber >= toBlock) {
+        if (!entry || entry.blockNumber < filters.fromBlock || entry.blockNumber >= filters.toBlock) {
           continue;
         }
 

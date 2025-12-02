@@ -1091,13 +1091,12 @@ export class PXE {
 
     this.log.verbose(`Getting private events for ${contractAddress.toString()} from ${fromBlock} to ${toBlock}`);
 
-    return this.privateEventDataProvider.getPrivateEvents(
+    return this.privateEventDataProvider.getPrivateEvents(eventSelector, {
       contractAddress,
       fromBlock,
       toBlock,
       recipients,
-      eventSelector,
-    );
+    });
   }
 
   /**
