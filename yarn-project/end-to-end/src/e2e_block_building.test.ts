@@ -445,6 +445,7 @@ describe('e2e_block_building', () => {
         toBlock: rct.blockNumber! + 1,
         recipients: [ownerAddress],
       });
+
       expect(events[0]).toEqual(values);
       expect(events[1]).toEqual(nestedValues);
 
