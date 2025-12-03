@@ -35,7 +35,7 @@ template <IsUltraOrMegaHonk Flavor_> class ProverInstance_ {
     using Flavor = Flavor_;
     using FF = typename Flavor::FF;
 
-  private:
+  public:
     using Circuit = typename Flavor::CircuitBuilder;
     using CommitmentKey = typename Flavor::CommitmentKey;
     using ProverPolynomials = typename Flavor::ProverPolynomials;

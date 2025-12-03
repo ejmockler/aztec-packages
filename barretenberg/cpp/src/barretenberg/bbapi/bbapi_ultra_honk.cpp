@@ -396,4 +396,160 @@ CircuitWriteSolidityVerifier::Response CircuitWriteSolidityVerifier::execute(BB_
     return { std::move(contract) };
 }
 
+/**
+ * @brief Serializable proving key data for UltraFlavor.
+ * @details Contains circuit-specific precomputed data that can be
+ * cached and reused across multiple proofs with different witnesses.
+ */
+struct DeciderProvingKeyExport {
+    std::vector<std::vector<bb::fr>> polynomials;
+    std::vector<bb::fr> public_inputs;
+    bb::RelationParameters<bb::fr> relation_parameters;
+    std::vector<bb::fr> gate_challenges;
+    bb::fr target_sum;
+    bool is_structured;
+    uint64_t dyadic_size;
+    uint64_t num_public_inputs;
+    uint64_t pub_inputs_offset;
+    uint64_t overflow_size;
+    uint64_t final_active_wire_idx;
+
+    MSGPACK_FIELDS(polynomials,
+                   public_inputs,
+                   relation_parameters,
+                   gate_challenges,
+                   target_sum,
+                   is_structured,
+                   dyadic_size,
+                   num_public_inputs,
+                   pub_inputs_offset,
+                   overflow_size,
+                   final_active_wire_idx);
+};
+
+AcirGetProvingKey::Response AcirGetProvingKey::execute(BB_UNUSED const BBApiRequest& request) &&
+{
+    BB_BENCH_NAME(MSGPACK_SCHEMA_NAME);
+    using ProverInstance = ProverInstance_<UltraFlavor>;
+
+    // Build proving key from circuit
+    auto prover_instance = [&] {
+        const acir_format::ProgramMetadata metadata{};
+        acir_format::AcirProgram program{ acir_format::circuit_buf_to_acir_format(std::move(circuit.bytecode)) };
+        auto builder = acir_format::create_circuit<UltraCircuitBuilder>(program);
+        return std::make_shared<ProverInstance>(builder);
+    }();
+
+    // Extract proving key data
+    DeciderProvingKeyExport export_data;
+    for (auto& poly : prover_instance->polynomials.get_all()) {
+        export_data.polynomials.emplace_back(poly.data(), poly.data() + poly.size());
+    }
+    export_data.public_inputs = prover_instance->public_inputs;
+    export_data.relation_parameters = prover_instance->relation_parameters;
+    export_data.gate_challenges = prover_instance->gate_challenges;
+    export_data.dyadic_size = prover_instance->dyadic_size();
+    export_data.num_public_inputs = prover_instance->num_public_inputs();
+    export_data.pub_inputs_offset = prover_instance->pub_inputs_offset();
+    export_data.final_active_wire_idx = prover_instance->get_final_active_wire_idx();
+
+    // Serialize to msgpack
+    msgpack::sbuffer buffer;
+    msgpack::pack(buffer, export_data);
+
+    return { .proving_key = std::vector<uint8_t>(buffer.data(), buffer.data() + buffer.size()) };
+}
+
+AcirProveWithPk::Response AcirProveWithPk::execute(BB_UNUSED const BBApiRequest& request) &&
+{
+    BB_BENCH_NAME(MSGPACK_SCHEMA_NAME);
+    using ProverInstance = ProverInstance_<UltraFlavor>;
+    using VerificationKey = UltraFlavor::VerificationKey;
+
+    // Deserialize proving key
+    auto pk_data = from_buffer<DeciderProvingKeyExport>(proving_key);
+
+    // Reconstruct prover instance with fixed data
+    auto prover_instance = std::make_shared<ProverInstance>();
+    prover_instance->polynomials = UltraFlavor::ProverPolynomials(static_cast<size_t>(pk_data.dyadic_size));
+
+    // Copy polynomials
+    auto polys = prover_instance->polynomials.get_all();
+    if (polys.size() != pk_data.polynomials.size()) {
+        throw_or_abort("Serialized polynomials count mismatch");
+    }
+
+    size_t i = 0;
+    for (auto& poly : polys) {
+        const auto& src_vec = pk_data.polynomials[i];
+        if (poly.size() != src_vec.size()) {
+            poly = bb::Polynomial<bb::fr>(src_vec);
+        } else {
+            std::copy(src_vec.begin(), src_vec.end(), poly.data());
+        }
+        i++;
+    }
+
+    prover_instance->public_inputs = pk_data.public_inputs;
+    prover_instance->metadata.num_public_inputs = static_cast<size_t>(pk_data.num_public_inputs);
+    prover_instance->metadata.pub_inputs_offset = static_cast<size_t>(pk_data.pub_inputs_offset);
+    prover_instance->relation_parameters = pk_data.relation_parameters;
+    prover_instance->gate_challenges = pk_data.gate_challenges;
+    prover_instance->metadata.dyadic_size = static_cast<size_t>(pk_data.dyadic_size);
+    prover_instance->final_active_wire_idx = static_cast<size_t>(pk_data.final_active_wire_idx);
+
+    // Compute witness polynomials
+    acir_format::ProgramMetadata metadata{};
+    acir_format::AcirProgram program{ acir_format::circuit_buf_to_acir_format(std::move(circuit.bytecode)) };
+    program.witness = acir_format::witness_buf_to_witness_vector(std::move(witness));
+    auto builder = acir_format::create_circuit<UltraCircuitBuilder>(program);
+
+    if (!bb::CircuitChecker::check(builder)) {
+        throw_or_abort("Circuit check failed");
+    }
+
+    // Populate witness polynomials
+    builder.finalize_circuit(true);
+
+    auto copy_block_wire = [&](const auto& wire_indices, bb::Polynomial<bb::fr>& poly, uint32_t offset) {
+        for (size_t j = 0; j < wire_indices.size(); ++j) {
+            poly.data()[offset + j] = builder.get_variable(wire_indices[j]);
+        }
+    };
+
+    for (const auto& block : builder.blocks.get()) {
+        uint32_t offset = block.trace_offset();
+        copy_block_wire(std::get<0>(block.wires), prover_instance->polynomials.w_l, offset);
+        copy_block_wire(std::get<1>(block.wires), prover_instance->polynomials.w_r, offset);
+        copy_block_wire(std::get<2>(block.wires), prover_instance->polynomials.w_o, offset);
+        copy_block_wire(std::get<3>(block.wires), prover_instance->polynomials.w_4, offset);
+    }
+
+    // Update public inputs
+    const auto& public_input_indices = builder.public_inputs();
+    prover_instance->public_inputs.clear();
+    prover_instance->public_inputs.reserve(public_input_indices.size());
+    for (const auto& idx : public_input_indices) {
+        prover_instance->public_inputs.push_back(builder.get_variable(idx));
+    }
+
+    prover_instance->commitment_key = bb::CommitmentKey<UltraFlavor::Curve>(static_cast<size_t>(pk_data.dyadic_size));
+    prover_instance->polynomials.set_shifted();
+
+    // Construct verification key and prove
+    auto verification_key = std::make_shared<VerificationKey>(prover_instance->get_precomputed());
+    UltraProver prover{ prover_instance, verification_key };
+    auto proof = prover.construct_proof();
+
+    // Split inner public inputs from proof
+    size_t num_public_inputs = prover.prover_instance->num_public_inputs();
+    size_t num_inner_public_inputs = num_public_inputs - DefaultIO::PUBLIC_INPUTS_SIZE;
+
+    return { .public_inputs =
+                 std::vector<uint256_t>{ proof.begin(),
+                                         proof.begin() + static_cast<std::ptrdiff_t>(num_inner_public_inputs) },
+             .proof = std::vector<uint256_t>{ proof.begin() + static_cast<std::ptrdiff_t>(num_inner_public_inputs),
+                                              proof.end() } };
+}
+
 } // namespace bb::bbapi

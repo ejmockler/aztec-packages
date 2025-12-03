@@ -4,6 +4,8 @@
 #include "barretenberg/dsl/acir_format/serde/witness_stack.hpp"
 #include "barretenberg/dsl/acir_format/utils.hpp"
 #include <cstddef>
+#include <stdexcept>
+#include <string>
 #include <vector>
 
 namespace bb::acir_bincode_mocks {
