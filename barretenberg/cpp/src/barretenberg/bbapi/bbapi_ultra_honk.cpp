@@ -466,12 +466,9 @@ AcirGetProvingKey::Response AcirGetProvingKey::execute(BB_UNUSED const BBApiRequ
     export_data.public_inputs = prover_instance->public_inputs;
     export_data.relation_parameters = prover_instance->relation_parameters;
     export_data.gate_challenges = prover_instance->gate_challenges;
-    // export_data.target_sum = prover_instance->target_sum;
-    // export_data.is_structured = prover_instance->is_structured;
     export_data.dyadic_size = prover_instance->dyadic_size();
     export_data.num_public_inputs = prover_instance->num_public_inputs();
     export_data.pub_inputs_offset = prover_instance->pub_inputs_offset();
-    // export_data.overflow_size = prover_instance->overflow_size();
     export_data.final_active_wire_idx = prover_instance->get_final_active_wire_idx();
 
     // Serialize to msgpack
@@ -502,16 +499,9 @@ AcirProveWithPk::Response AcirProveWithPk::execute(BB_UNUSED const BBApiRequest&
 
         auto instance = std::make_shared<ProverInstance>(builder);
 
-        // Hydrate instance with PK data if needed, but builder has witness.
-        // The PK data contains precomputed polynomials which we should verify against or use?
-        // For now, let's assume we recompute everything as per original logic?
-        // Original logic was using `UltraProver` with `instance`.
-        // If we are strictly checking, `AcirProveWithPk` implies we USE the Pk.
-        // But the `builder` logic computes it from scratch?
-        // If so, `proving_key` is just used for ... verification?
-        // Wait, if we are ignoring pk_data's polynomials, then we might strictly be doing "Prove" not "ProveWithPk".
-        // But let's stick to what works for now to fix the crash.
-        // The previous logs showed it reached STEP 6.4, so the logic WAS functional.
+        // TODO: Currently we recompute the ProverInstance from the builder.
+        // In the future, we should hydrate the instance using the precomputed data in pk_data
+        // to avoid recomputing polynomials that are already in the proving key.
 
         // Construct verification key and prove
         auto verification_key = std::make_shared<VerificationKey>(instance->get_precomputed());

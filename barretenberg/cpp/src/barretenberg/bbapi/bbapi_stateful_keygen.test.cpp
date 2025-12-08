@@ -187,7 +187,6 @@ TEST_F(StatefulKeygenTest, EquivalenceWithCircuitProve)
     auto [stateful_public_inputs, stateful_proof_data] = unpack_combined(stateful_proof.combined_result);
 
     // Both methods should produce valid proofs with same public inputs
-    // Both methods should produce valid proofs with same public inputs
     auto [oneshot_public_inputs, oneshot_proof_data] = unpack_combined(oneshot_proof.combined_result);
     EXPECT_EQ(stateful_public_inputs, oneshot_public_inputs) << "Public inputs mismatch";
     EXPECT_FALSE(stateful_proof_data.empty()) << "Proof should not be empty";
