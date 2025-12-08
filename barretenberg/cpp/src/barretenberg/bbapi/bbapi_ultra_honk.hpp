@@ -57,10 +57,9 @@ struct CircuitProve {
     struct Response {
         static constexpr const char MSGPACK_SCHEMA_NAME[] = "CircuitProveResponse";
 
-        std::vector<uint256_t> public_inputs;
-        std::vector<uint256_t> proof;
+        std::vector<uint8_t> combined_result;
         CircuitComputeVk::Response vk;
-        MSGPACK_FIELDS(public_inputs, proof, vk);
+        MSGPACK_FIELDS(combined_result, vk);
         bool operator==(const Response&) const = default;
     };
 
@@ -222,9 +221,8 @@ struct AcirProveWithPk {
     struct Response {
         static constexpr const char MSGPACK_SCHEMA_NAME[] = "AcirProveWithPkResponse";
 
-        std::vector<uint256_t> public_inputs;
-        std::vector<uint256_t> proof;
-        MSGPACK_FIELDS(public_inputs, proof);
+        std::vector<uint8_t> combined_result;
+        MSGPACK_FIELDS(combined_result);
         bool operator==(const Response&) const = default;
     };
 

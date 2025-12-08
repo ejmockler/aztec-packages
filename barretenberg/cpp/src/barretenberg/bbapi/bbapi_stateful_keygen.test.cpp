@@ -1,7 +1,9 @@
 #include "barretenberg/bbapi/bbapi_ultra_honk.hpp"
 #include "barretenberg/chonk/acir_bincode_mocks.hpp"
+#include "barretenberg/common/net.hpp"
 #include "barretenberg/common/serialize.hpp"
 #include "barretenberg/dsl/acir_format/acir_format.hpp"
+#include <cstring>
 #include <gtest/gtest.h>
 
 namespace bb::bbapi {
@@ -33,6 +35,50 @@ TEST_F(StatefulKeygenTest, AcirGetProvingKey)
     EXPECT_GT(pk_response.proving_key.size(), 100) << "Proving key should be reasonably sized";
 }
 
+// Helper to unpack combined result from vector<uint8_t>
+std::pair<std::vector<uint256_t>, std::vector<uint256_t>> unpack_combined(const std::vector<uint8_t>& combined)
+{
+    if (combined.size() < 4) {
+        throw std::runtime_error("Combined result too small");
+    }
+
+    // Read num_public_inputs (first 4 bytes, big endian)
+    uint32_t num_pub_inputs_be;
+    std::memcpy(&num_pub_inputs_be, combined.data(), 4);
+    uint32_t num_pub_inputs = ntohl(num_pub_inputs_be);
+
+    size_t offset = 4;
+    size_t element_size = 32;
+    size_t pub_inputs_bytes = num_pub_inputs * element_size;
+
+    if (combined.size() < offset + pub_inputs_bytes) {
+        throw std::runtime_error("Combined result too small for public inputs");
+    }
+
+    std::vector<uint256_t> public_inputs;
+    for (size_t i = 0; i < num_pub_inputs; ++i) {
+        uint64_t bin_data[4];
+        std::memcpy(bin_data, &combined[offset + i * element_size], element_size);
+        public_inputs.emplace_back(ntohll(bin_data[3]), ntohll(bin_data[2]), ntohll(bin_data[1]), ntohll(bin_data[0]));
+    }
+
+    offset += pub_inputs_bytes;
+    size_t remaining_bytes = combined.size() - offset;
+    if (remaining_bytes % element_size != 0) {
+        throw std::runtime_error("Invalid proof size in combined result");
+    }
+    size_t num_proof_elements = remaining_bytes / element_size;
+
+    std::vector<uint256_t> proof;
+    for (size_t i = 0; i < num_proof_elements; ++i) {
+        uint64_t bin_data[4];
+        std::memcpy(bin_data, &combined[offset + i * element_size], element_size);
+        proof.emplace_back(ntohll(bin_data[3]), ntohll(bin_data[2]), ntohll(bin_data[1]), ntohll(bin_data[0]));
+    }
+
+    return std::make_pair(public_inputs, proof);
+}
+
 /**
  * @brief Test AcirProveWithPk command
  * @details Verifies that we can prove using a pre-computed proving key
@@ -58,8 +104,9 @@ TEST_F(StatefulKeygenTest, AcirProveWithPk)
                               .execute();
 
     // Verify proof was generated
-    EXPECT_FALSE(prove_response.proof.empty()) << "Proof should not be empty";
-    EXPECT_FALSE(prove_response.public_inputs.empty()) << "Public inputs should not be empty";
+    auto [public_inputs, proof] = unpack_combined(prove_response.combined_result);
+    EXPECT_FALSE(proof.empty()) << "Proof should not be empty";
+    EXPECT_FALSE(public_inputs.empty()) << "Public inputs should not be empty";
 }
 
 /**
@@ -94,10 +141,13 @@ TEST_F(StatefulKeygenTest, MultipleProofsWithSameKey)
                       .execute();
 
     // Both proofs should be valid but different (different witnesses)
-    EXPECT_FALSE(proof1.proof.empty());
-    EXPECT_FALSE(proof2.proof.empty());
+    auto [public_inputs1, proof1_vec] = unpack_combined(proof1.combined_result);
+    auto [public_inputs2, proof2_vec] = unpack_combined(proof2.combined_result);
+
+    EXPECT_FALSE(proof1_vec.empty());
+    EXPECT_FALSE(proof2_vec.empty());
     // Proofs should differ because witnesses differ
-    EXPECT_NE(proof1.proof, proof2.proof) << "Different witnesses should produce different proofs";
+    EXPECT_NE(proof1_vec, proof2_vec) << "Different witnesses should produce different proofs";
 }
 
 /**
@@ -134,20 +184,26 @@ TEST_F(StatefulKeygenTest, EquivalenceWithCircuitProve)
                                        .settings = settings }
                              .execute();
 
-    // Both methods should produce valid proofs with same public inputs
-    EXPECT_EQ(stateful_proof.public_inputs, oneshot_proof.public_inputs)
-        << "Stateful and one-shot should produce same public inputs";
+    auto [stateful_public_inputs, stateful_proof_data] = unpack_combined(stateful_proof.combined_result);
 
-    // Both proofs should verify successfully
-    auto verify_stateful = CircuitVerify{ .verification_key = vk_response.bytes,
-                                          .public_inputs = stateful_proof.public_inputs,
-                                          .proof = stateful_proof.proof,
-                                          .settings = settings }
-                               .execute();
+    // Both methods should produce valid proofs with same public inputs
+    // Both methods should produce valid proofs with same public inputs
+    auto [oneshot_public_inputs, oneshot_proof_data] = unpack_combined(oneshot_proof.combined_result);
+    EXPECT_EQ(stateful_public_inputs, oneshot_public_inputs) << "Public inputs mismatch";
+    EXPECT_FALSE(stateful_proof_data.empty()) << "Proof should not be empty";
+
+    auto verify_stateful =
+        CircuitVerify{
+            .verification_key = vk_response.bytes, // Assuming vk_response.bytes is the intended verification key
+            .public_inputs = stateful_public_inputs,
+            .proof = stateful_proof_data,
+            .settings = settings,
+        }
+            .execute();
 
     auto verify_oneshot = CircuitVerify{ .verification_key = vk_response.bytes,
-                                         .public_inputs = oneshot_proof.public_inputs,
-                                         .proof = oneshot_proof.proof,
+                                         .public_inputs = oneshot_public_inputs,
+                                         .proof = oneshot_proof_data,
                                          .settings = settings }
                               .execute();
 
