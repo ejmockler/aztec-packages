@@ -60,13 +60,8 @@ template <typename Flavor>
 std::shared_ptr<ProverInstance_<Flavor>> _compute_prover_instance(std::vector<uint8_t>&& bytecode,
                                                                   std::vector<uint8_t>&& witness)
 {
-    // Measure function time and debug print
-    auto initial_time = std::chrono::high_resolution_clock::now();
     typename Flavor::CircuitBuilder builder = _compute_circuit<Flavor>(std::move(bytecode), std::move(witness));
     auto prover_instance = std::make_shared<ProverInstance_<Flavor>>(builder);
-    auto final_time = std::chrono::high_resolution_clock::now();
-    auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(final_time - initial_time);
-    std::cerr << "CircuitProve: Proving key computed in " << duration.count() << " ms" << std::endl;
     return prover_instance;
 }
 template <typename Flavor>
@@ -74,13 +69,9 @@ CircuitProve::Response _prove(std::vector<uint8_t>&& bytecode,
                               std::vector<uint8_t>&& witness,
                               std::vector<uint8_t>&& vk_bytes)
 {
-    std::cerr << "DEBUG: Entering _prove" << std::endl;
     using Proof = typename Flavor::Transcript::Proof;
 
-    std::cerr << "DEBUG: Calling _compute_prover_instance with witness size: " << witness.size()
-              << " (IGNORING WITNESS)" << std::endl;
     auto prover_instance = _compute_prover_instance<Flavor>(std::move(bytecode), {});
-    std::cerr << "DEBUG: Prover instance computed" << std::endl;
     std::shared_ptr<typename Flavor::VerificationKey> vk;
     if (vk_bytes.empty()) {
         std::cerr
@@ -94,9 +85,7 @@ CircuitProve::Response _prove(std::vector<uint8_t>&& bytecode,
 
     UltraProver_<Flavor> prover{ prover_instance, vk };
 
-    std::cerr << "DEBUG: Calling construct_proof" << std::endl;
     Proof concat_pi_and_proof = prover.construct_proof();
-    std::cerr << "DEBUG: Proof constructed" << std::endl;
 
     // Compute number of inner public inputs. Perform loose checks that the public inputs contain enough data.
     auto num_inner_public_inputs = [&]() {
@@ -153,9 +142,6 @@ CircuitProve::Response _prove(std::vector<uint8_t>&& bytecode,
         bb::fr::serialize_to_buffer(concat_pi_and_proof[i], ptr);
         ptr += 32;
     }
-    std::cerr << "DEBUG: Packed combined result, size: " << result_vec.size() << std::endl;
-
-    std::cerr << "DEBUG: Returning result" << std::endl;
     return { .combined_result = std::move(result_vec), .vk = std::move(vk_response) };
 }
 
@@ -488,9 +474,6 @@ AcirGetProvingKey::Response AcirGetProvingKey::execute(BB_UNUSED const BBApiRequ
     // export_data.overflow_size = prover_instance->overflow_size();
     export_data.final_active_wire_idx = prover_instance->get_final_active_wire_idx();
 
-    info("AcirGetProvingKey: public_inputs size: ", export_data.public_inputs.size());
-    info("AcirGetProvingKey: target_sum: ", export_data.target_sum);
-
     // Serialize to msgpack
     msgpack::sbuffer buffer;
     msgpack::pack(buffer, export_data);
@@ -502,38 +485,22 @@ AcirProveWithPk::Response AcirProveWithPk::execute(BB_UNUSED const BBApiRequest&
 {
     std::vector<uint8_t> result_vec;
     {
-        std::cerr << "STEP 1: Start AcirProveWithPk::execute" << std::endl;
         BB_BENCH_NAME(MSGPACK_SCHEMA_NAME);
         using ProverInstance = ProverInstance_<UltraFlavor>;
         using VerificationKey = UltraFlavor::VerificationKey;
 
         // Deserialize proving key
-        std::cerr << "Proving key size: " << proving_key.size() << std::endl;
-        std::stringstream ss;
-        ss << std::hex << std::setfill('0');
-        for (size_t i = 0; i < std::min((size_t)16, proving_key.size()); ++i) {
-            ss << std::setw(2) << (int)proving_key[i] << " ";
-        }
-        std::cerr << "PK Header: " << ss.str() << std::endl;
-        std::cerr << "About to deserialize PK" << std::endl;
-
         DeciderProvingKeyExport pk_data;
         msgpack::object_handle oh = msgpack::unpack((const char*)proving_key.data(), proving_key.size());
         msgpack::object obj = oh.get();
         obj.convert(pk_data);
 
-        std::cerr << "STEP 2: Deserialized PK" << std::endl;
-        std::cerr << "pk_data.public_inputs size: " << pk_data.public_inputs.size() << std::endl;
-        std::cerr << "pk_data.target_sum: " << pk_data.target_sum << std::endl;
-
         // Reconstruct circuit from bytecode and witness
         acir_format::AcirProgram program{ acir_format::circuit_buf_to_acir_format(std::move(circuit.bytecode)) };
         program.witness = acir_format::witness_buf_to_witness_vector(std::move(witness));
         auto builder = acir_format::create_circuit<UltraCircuitBuilder>(program);
-        std::cerr << "STEP 3: Created Circuit" << std::endl;
 
         auto instance = std::make_shared<ProverInstance>(builder);
-        std::cerr << "STEP 4: Finalized Circuit" << std::endl;
 
         // Hydrate instance with PK data if needed, but builder has witness.
         // The PK data contains precomputed polynomials which we should verify against or use?
@@ -549,16 +516,11 @@ AcirProveWithPk::Response AcirProveWithPk::execute(BB_UNUSED const BBApiRequest&
         // Construct verification key and prove
         auto verification_key = std::make_shared<VerificationKey>(instance->get_precomputed());
         UltraProver prover{ instance, verification_key };
-        std::cerr << "STEP 5: Created Prover" << std::endl;
 
         auto proof = prover.construct_proof();
-        std::cerr << "STEP 6: Constructed Proof" << std::endl;
 
         // Split inner public inputs from proof
         size_t num_public_inputs = instance->num_public_inputs();
-        std::cerr << "STEP 6.1: num_public_inputs: " << num_public_inputs << std::endl;
-        std::cerr << "STEP 6.1: proof.size(): " << proof.size() << std::endl;
-
         // Create the combined result (optimized)
         // Format: [num_public_inputs (4 bytes)] [public_inputs (32 bytes each)] [proof...]
 
@@ -572,9 +534,6 @@ AcirProveWithPk::Response AcirProveWithPk::execute(BB_UNUSED const BBApiRequest&
         std::memcpy(ptr, &num_pub_inputs_be, 4);
         ptr += 4;
 
-        std::cerr << "STEP 6.2: num_inner_public_inputs: 0" << std::endl;
-        std::cerr << "STEP 6.3: constructing response (combined)" << std::endl;
-
         // Pack public inputs
         for (const auto& fr : instance->public_inputs) {
             bb::fr::serialize_to_buffer(fr, ptr);
@@ -586,11 +545,8 @@ AcirProveWithPk::Response AcirProveWithPk::execute(BB_UNUSED const BBApiRequest&
             bb::fr::serialize_to_buffer(fr, ptr);
             ptr += 32;
         }
-
-        std::cerr << "STEP 6.4: vectors constructed" << std::endl;
     } // Destructors run here
 
-    std::cerr << "STEP 7: Destructors finished, returning" << std::endl;
     return { .combined_result = std::move(result_vec) };
 }
 
