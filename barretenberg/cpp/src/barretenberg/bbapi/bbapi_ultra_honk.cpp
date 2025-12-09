@@ -66,7 +66,7 @@ std::shared_ptr<ProverInstance_<Flavor>> _compute_prover_instance(std::vector<ui
 }
 template <typename Flavor>
 CircuitProve::Response _prove(std::vector<uint8_t>&& bytecode,
-                              std::vector<uint8_t>&& witness,
+                              [[maybe_unused]] std::vector<uint8_t>&& witness,
                               std::vector<uint8_t>&& vk_bytes)
 {
     using Proof = typename Flavor::Transcript::Proof;
