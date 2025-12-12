@@ -200,6 +200,77 @@ template <IsUltraOrMegaHonk Flavor_> class ProverInstance_ {
         vinfo("time to construct proving key: ", diff.count(), " ms.");
     }
 
+    /**
+     * @brief Construct ProverInstance by hydrating precomputed polynomials from serialized data.
+     * @details This avoids recomputing selectors, permutation polynomials, and lookup tables.
+     * Only witness-specific data (wires, z_perm, lookup_inverses) is computed fresh from the circuit.
+     *
+     * @param circuit The circuit builder with witness data populated
+     * @param precomputed_polynomials Vector of polynomial coefficient vectors from DeciderProvingKeyExport
+     * @param precomputed_metadata Metadata (dyadic_size, num_public_inputs, pub_inputs_offset)
+     * @param final_active_wire_idx_in The final active wire index from the proving key
+     * @param commitment_key Optional commitment key
+     */
+    ProverInstance_(Circuit& circuit,
+                    std::vector<std::vector<FF>>&& precomputed_polynomials,
+                    const MetaData& precomputed_metadata,
+                    size_t final_active_wire_idx_in,
+                    const CommitmentKey& commitment_key_in = CommitmentKey())
+        : final_active_wire_idx(final_active_wire_idx_in)
+        , commitment_key(commitment_key_in)
+    {
+        BB_BENCH_NAME("ProverInstance(Circuit&, hydrated)");
+        vinfo("Constructing ProverInstance with hydration (stateful keygen)");
+        auto start = std::chrono::steady_clock::now();
+
+        // Copy metadata from proving key
+        metadata = precomputed_metadata;
+
+        // Validate circuit is finalized
+        if (!circuit.circuit_finalized) {
+            circuit.finalize_circuit(/* ensure_nonzero = */ true);
+        }
+
+        // 1. Hydrate polynomials from precomputed data
+        {
+            BB_BENCH_NAME("hydrating polynomials from proving key");
+            auto all_polys = polynomials.get_all();
+            BB_ASSERT(precomputed_polynomials.size() == all_polys.size(),
+                      "ProverInstance hydration: polynomial count mismatch. Expected ",
+                      all_polys.size(),
+                      " but got ",
+                      precomputed_polynomials.size());
+
+            size_t idx = 0;
+            for (auto& poly : all_polys) {
+                poly = Polynomial(std::move(precomputed_polynomials[idx]));
+                ++idx;
+            }
+        }
+
+        // 2. Set shifted polynomials (these are views into the to_be_shifted polynomials)
+        polynomials.set_shifted();
+
+        // 3. Populate memory records from circuit (needed for lookup)
+        populate_memory_records(circuit);
+
+        // 4. Extract public inputs from witness wires
+        {
+            for (size_t i = 0; i < metadata.num_public_inputs; ++i) {
+                size_t idx = i + metadata.pub_inputs_offset;
+                public_inputs.emplace_back(polynomials.w_r[idx]);
+            }
+
+            if constexpr (HasIPAAccumulator<Flavor>) {
+                ipa_proof = circuit.ipa_proof;
+            }
+        }
+
+        auto end = std::chrono::steady_clock::now();
+        auto diff = std::chrono::duration_cast<std::chrono::milliseconds>(end - start);
+        vinfo("time to construct proving key (hydrated): ", diff.count(), " ms.");
+    }
+
     ProverInstance_() = default;
     ProverInstance_(const ProverInstance_&) = delete;
     ProverInstance_(ProverInstance_&&) = delete;

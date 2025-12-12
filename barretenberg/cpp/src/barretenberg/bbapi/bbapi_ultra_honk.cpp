@@ -30,6 +30,7 @@
 #include "barretenberg/flavor/ultra_starknet_zk_flavor.hpp"
 #endif
 #include "barretenberg/common/net.hpp"
+#include "barretenberg/crypto/blake3s/blake3s.hpp"
 #include <cstring>
 #include <exception>
 #include <iomanip>
@@ -431,6 +432,8 @@ struct DeciderProvingKeyExport {
     uint64_t pub_inputs_offset;
     uint64_t overflow_size;
     uint64_t final_active_wire_idx;
+    // Bytecode hash for cache validation - ensures proving key matches circuit
+    std::vector<uint8_t> bytecode_hash;
 
     MSGPACK_FIELDS(polynomials,
                    public_inputs,
@@ -442,13 +445,18 @@ struct DeciderProvingKeyExport {
                    num_public_inputs,
                    pub_inputs_offset,
                    overflow_size,
-                   final_active_wire_idx);
+                   final_active_wire_idx,
+                   bytecode_hash);
 };
 
 AcirGetProvingKey::Response AcirGetProvingKey::execute(BB_UNUSED const BBApiRequest& request) &&
 {
     BB_BENCH_NAME(MSGPACK_SCHEMA_NAME);
     using ProverInstance = ProverInstance_<UltraFlavor>;
+
+    // Compute bytecode hash BEFORE consuming bytecode (for cache validation)
+    auto bytecode_hash_arr = blake3::blake3s(circuit.bytecode);
+    std::vector<uint8_t> bytecode_hash_vec(bytecode_hash_arr.begin(), bytecode_hash_arr.end());
 
     // Build proving key from circuit
     auto prover_instance = [&] {
@@ -470,6 +478,7 @@ AcirGetProvingKey::Response AcirGetProvingKey::execute(BB_UNUSED const BBApiRequ
     export_data.num_public_inputs = prover_instance->num_public_inputs();
     export_data.pub_inputs_offset = prover_instance->pub_inputs_offset();
     export_data.final_active_wire_idx = prover_instance->get_final_active_wire_idx();
+    export_data.bytecode_hash = std::move(bytecode_hash_vec);
 
     // Serialize to msgpack
     msgpack::sbuffer buffer;
@@ -486,22 +495,41 @@ AcirProveWithPk::Response AcirProveWithPk::execute(BB_UNUSED const BBApiRequest&
         using ProverInstance = ProverInstance_<UltraFlavor>;
         using VerificationKey = UltraFlavor::VerificationKey;
 
+        // Compute bytecode hash for cache validation
+        auto current_bytecode_hash = blake3::blake3s(circuit.bytecode);
+
         // Deserialize proving key
         DeciderProvingKeyExport pk_data;
         msgpack::object_handle oh = msgpack::unpack((const char*)proving_key.data(), proving_key.size());
         msgpack::object obj = oh.get();
         obj.convert(pk_data);
 
+        // Validate bytecode hash matches proving key
+        bool hash_matches =
+            (pk_data.bytecode_hash.size() == current_bytecode_hash.size()) &&
+            std::equal(pk_data.bytecode_hash.begin(), pk_data.bytecode_hash.end(), current_bytecode_hash.begin());
+
+        if (!hash_matches) {
+            throw_or_abort("AcirProveWithPk: Bytecode hash mismatch. "
+                           "The proving key was generated for a different circuit. "
+                           "Please regenerate the proving key with the current bytecode.");
+        }
+
         // Reconstruct circuit from bytecode and witness
         acir_format::AcirProgram program{ acir_format::circuit_buf_to_acir_format(std::move(circuit.bytecode)) };
         program.witness = acir_format::witness_buf_to_witness_vector(std::move(witness));
         auto builder = acir_format::create_circuit<UltraCircuitBuilder>(program);
 
-        auto instance = std::make_shared<ProverInstance>(builder);
+        // Reconstruct metadata from proving key
+        MetaData metadata;
+        metadata.dyadic_size = pk_data.dyadic_size;
+        metadata.num_public_inputs = pk_data.num_public_inputs;
+        metadata.pub_inputs_offset = pk_data.pub_inputs_offset;
 
-        // TODO: Currently we recompute the ProverInstance from the builder.
-        // In the future, we should hydrate the instance using the precomputed data in pk_data
-        // to avoid recomputing polynomials that are already in the proving key.
+        // HYDRATION: Create ProverInstance using precomputed polynomials from proving key
+        // This skips recomputing selectors, permutation polynomials, and lookup tables
+        auto instance = std::make_shared<ProverInstance>(
+            builder, std::move(pk_data.polynomials), metadata, pk_data.final_active_wire_idx);
 
         // Construct verification key and prove
         auto verification_key = std::make_shared<VerificationKey>(instance->get_precomputed());
