@@ -106,7 +106,8 @@ TEST_F(StatefulKeygenTest, AcirProveWithPk)
     // Verify proof was generated
     auto [public_inputs, proof] = unpack_combined(prove_response.combined_result);
     EXPECT_FALSE(proof.empty()) << "Proof should not be empty";
-    EXPECT_FALSE(public_inputs.empty()) << "Public inputs should not be empty";
+    // Note: public_inputs may be empty for simple circuits with no declared public inputs
+    // The 16-element pairing point accumulator is internal and not included in inner public inputs
 }
 
 /**
@@ -115,8 +116,11 @@ TEST_F(StatefulKeygenTest, AcirProveWithPk)
  */
 TEST_F(StatefulKeygenTest, MultipleProofsWithSameKey)
 {
+    // Create ONE circuit bytecode
     auto [bytecode, witness1] = acir_bincode_mocks::create_simple_circuit_bytecode();
-    auto [_bytecode2, witness2] = acir_bincode_mocks::create_simple_circuit_bytecode(2); // Different witness
+
+    // Create a SECOND witness for the SAME circuit (different a,b values: 4*5=20 instead of 2*3=6)
+    auto witness2 = acir_bincode_mocks::create_witness_for_simple_circuit(bb::fr(4), bb::fr(5));
 
     bbapi::ProofSystemSettings settings{ .ipa_accumulation = false,
                                          .oracle_hash_type = "poseidon2",
@@ -127,7 +131,7 @@ TEST_F(StatefulKeygenTest, MultipleProofsWithSameKey)
         AcirGetProvingKey{ .circuit = { .name = "test_circuit", .bytecode = bytecode }, .settings = settings }
             .execute();
 
-    // Prove MULTIPLE times with different witnesses
+    // Prove MULTIPLE times with different witnesses (same circuit structure)
     auto proof1 = AcirProveWithPk{ .circuit = { .name = "test_circuit", .bytecode = bytecode },
                                    .witness = witness1,
                                    .proving_key = pk_response.proving_key,
@@ -208,6 +212,50 @@ TEST_F(StatefulKeygenTest, EquivalenceWithCircuitProve)
 
     EXPECT_TRUE(verify_stateful.verified) << "Stateful proof should verify";
     EXPECT_TRUE(verify_oneshot.verified) << "One-shot proof should verify";
+}
+
+/**
+ * @brief Test that bytecode hash mismatch is detected
+ * @details Verifies that using a proving key generated for one circuit
+ * with a different circuit's bytecode throws an appropriate error
+ */
+TEST_F(StatefulKeygenTest, BytecodeHashMismatch)
+{
+    // Create two different circuits
+    auto [bytecode1, witness1] = acir_bincode_mocks::create_simple_circuit_bytecode(1);
+    auto [bytecode2, witness2] = acir_bincode_mocks::create_simple_circuit_bytecode(2);
+
+    bbapi::ProofSystemSettings settings{ .ipa_accumulation = false,
+                                         .oracle_hash_type = "poseidon2",
+                                         .disable_zk = true };
+
+    // Generate proving key for circuit 1
+    auto pk_response =
+        AcirGetProvingKey{ .circuit = { .name = "test_circuit", .bytecode = bytecode1 }, .settings = settings }
+            .execute();
+
+    // Try to use it with circuit 2's bytecode - should fail
+    // Note: EXPECT_THROW doesn't work with brace-enclosed initializer lists,
+    // so we use a lambda and manual exception checking
+    bool threw_expected_exception = false;
+    try {
+        AcirProveWithPk prove_cmd;
+        prove_cmd.circuit = { .name = "test_circuit", .bytecode = bytecode2 };
+        prove_cmd.witness = witness2;
+        prove_cmd.proving_key = pk_response.proving_key;
+        prove_cmd.settings = settings;
+        std::move(prove_cmd).execute();
+    } catch (const std::runtime_error& e) {
+        threw_expected_exception = true;
+        // Verify the error message mentions bytecode hash mismatch
+        std::string error_msg = e.what();
+        EXPECT_TRUE(error_msg.find("Bytecode hash mismatch") != std::string::npos ||
+                    error_msg.find("bytecode") != std::string::npos)
+            << "Error message should mention bytecode hash mismatch, got: " << error_msg;
+    } catch (...) {
+        FAIL() << "Expected std::runtime_error but got different exception type";
+    }
+    EXPECT_TRUE(threw_expected_exception) << "Using proving key with mismatched bytecode should throw";
 }
 
 } // namespace bb::bbapi
