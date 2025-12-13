@@ -67,12 +67,12 @@ std::shared_ptr<ProverInstance_<Flavor>> _compute_prover_instance(std::vector<ui
 }
 template <typename Flavor>
 CircuitProve::Response _prove(std::vector<uint8_t>&& bytecode,
-                              [[maybe_unused]] std::vector<uint8_t>&& witness,
+                              std::vector<uint8_t>&& witness,
                               std::vector<uint8_t>&& vk_bytes)
 {
     using Proof = typename Flavor::Transcript::Proof;
 
-    auto prover_instance = _compute_prover_instance<Flavor>(std::move(bytecode), {});
+    auto prover_instance = _compute_prover_instance<Flavor>(std::move(bytecode), std::move(witness));
     std::shared_ptr<typename Flavor::VerificationKey> vk;
     if (vk_bytes.empty()) {
         std::cerr
@@ -416,12 +416,35 @@ CircuitWriteSolidityVerifier::Response CircuitWriteSolidityVerifier::execute(BB_
 }
 
 /**
+ * @brief Serializable polynomial data for proving key export.
+ * @details Captures all metadata needed to reconstruct a polynomial:
+ *   - coefficients: The actual coefficient data
+ *   - start_index: The starting index of the memory-backed range (used for shifts)
+ *   - virtual_size: The total logical size of the polynomial
+ *
+ * This allows proper reconstruction of "shiftable" polynomials that require
+ * start_index > 0 for the shifted() operation to work correctly.
+ */
+struct PolynomialExport {
+    std::vector<bb::fr> coefficients;
+    uint64_t start_index;
+    uint64_t virtual_size;
+
+    MSGPACK_FIELDS(coefficients, start_index, virtual_size);
+};
+
+/**
  * @brief Serializable proving key data for UltraFlavor.
  * @details Contains circuit-specific precomputed data that can be
  * cached and reused across multiple proofs with different witnesses.
+ *
+ * Key design decisions for upstream compatibility:
+ * 1. PolynomialExport preserves start_index/virtual_size for proper reconstruction
+ * 2. Bytecode hash enables cache validation across circuit versions
+ * 3. All integer types use uint64_t for cross-platform msgpack compatibility
  */
 struct DeciderProvingKeyExport {
-    std::vector<std::vector<bb::fr>> polynomials;
+    std::vector<PolynomialExport> polynomials;
     std::vector<bb::fr> public_inputs;
     bb::RelationParameters<bb::fr> relation_parameters;
     std::vector<bb::fr> gate_challenges;
@@ -434,6 +457,9 @@ struct DeciderProvingKeyExport {
     uint64_t final_active_wire_idx;
     // Bytecode hash for cache validation - ensures proving key matches circuit
     std::vector<uint8_t> bytecode_hash;
+    // Memory records for RAM/ROM lookup arguments (indices into full trace)
+    std::vector<uint32_t> memory_read_records;
+    std::vector<uint32_t> memory_write_records;
 
     MSGPACK_FIELDS(polynomials,
                    public_inputs,
@@ -446,7 +472,9 @@ struct DeciderProvingKeyExport {
                    pub_inputs_offset,
                    overflow_size,
                    final_active_wire_idx,
-                   bytecode_hash);
+                   bytecode_hash,
+                   memory_read_records,
+                   memory_write_records);
 };
 
 AcirGetProvingKey::Response AcirGetProvingKey::execute(BB_UNUSED const BBApiRequest& request) &&
@@ -466,10 +494,16 @@ AcirGetProvingKey::Response AcirGetProvingKey::execute(BB_UNUSED const BBApiRequ
         return std::make_shared<ProverInstance>(builder);
     }();
 
-    // Extract proving key data
+    // Extract ONLY precomputed polynomials (selectors, sigmas, ids, tables, lagrange)
+    // WitnessEntities (w_l, w_r, w_o, w_4, z_perm, lookup_inverses, etc.) are witness-dependent
+    // and must be computed fresh for each proof with the new witness
     DeciderProvingKeyExport export_data;
-    for (auto& poly : prover_instance->polynomials.get_all()) {
-        export_data.polynomials.emplace_back(poly.data(), poly.data() + poly.size());
+    for (auto& poly : prover_instance->polynomials.get_precomputed()) {
+        PolynomialExport poly_export;
+        poly_export.coefficients = std::vector<bb::fr>(poly.data(), poly.data() + poly.size());
+        poly_export.start_index = poly.start_index();
+        poly_export.virtual_size = poly.virtual_size();
+        export_data.polynomials.push_back(std::move(poly_export));
     }
     export_data.public_inputs = prover_instance->public_inputs;
     export_data.relation_parameters = prover_instance->relation_parameters;
@@ -479,6 +513,8 @@ AcirGetProvingKey::Response AcirGetProvingKey::execute(BB_UNUSED const BBApiRequ
     export_data.pub_inputs_offset = prover_instance->pub_inputs_offset();
     export_data.final_active_wire_idx = prover_instance->get_final_active_wire_idx();
     export_data.bytecode_hash = std::move(bytecode_hash_vec);
+    export_data.memory_read_records = prover_instance->memory_read_records;
+    export_data.memory_write_records = prover_instance->memory_write_records;
 
     // Serialize to msgpack
     msgpack::sbuffer buffer;
@@ -522,14 +558,29 @@ AcirProveWithPk::Response AcirProveWithPk::execute(BB_UNUSED const BBApiRequest&
 
         // Reconstruct metadata from proving key
         MetaData metadata;
-        metadata.dyadic_size = pk_data.dyadic_size;
-        metadata.num_public_inputs = pk_data.num_public_inputs;
-        metadata.pub_inputs_offset = pk_data.pub_inputs_offset;
+        metadata.dyadic_size = static_cast<size_t>(pk_data.dyadic_size);
+        metadata.num_public_inputs = static_cast<size_t>(pk_data.num_public_inputs);
+        metadata.pub_inputs_offset = static_cast<size_t>(pk_data.pub_inputs_offset);
+
+        // Convert PolynomialExport to ProverInstance::PolynomialData
+        std::vector<ProverInstance::PolynomialData> poly_data_vec;
+        poly_data_vec.reserve(pk_data.polynomials.size());
+        for (auto& poly_export : pk_data.polynomials) {
+            ProverInstance::PolynomialData poly_data;
+            poly_data.coefficients = std::move(poly_export.coefficients);
+            poly_data.start_index = static_cast<size_t>(poly_export.start_index);
+            poly_data.virtual_size = static_cast<size_t>(poly_export.virtual_size);
+            poly_data_vec.push_back(std::move(poly_data));
+        }
 
         // HYDRATION: Create ProverInstance using precomputed polynomials from proving key
         // This skips recomputing selectors, permutation polynomials, and lookup tables
-        auto instance = std::make_shared<ProverInstance>(
-            builder, std::move(pk_data.polynomials), metadata, pk_data.final_active_wire_idx);
+        auto instance = std::make_shared<ProverInstance>(builder,
+                                                         std::move(poly_data_vec),
+                                                         metadata,
+                                                         static_cast<size_t>(pk_data.final_active_wire_idx),
+                                                         std::move(pk_data.memory_read_records),
+                                                         std::move(pk_data.memory_write_records));
 
         // Construct verification key and prove
         auto verification_key = std::make_shared<VerificationKey>(instance->get_precomputed());
@@ -537,30 +588,38 @@ AcirProveWithPk::Response AcirProveWithPk::execute(BB_UNUSED const BBApiRequest&
 
         auto proof = prover.construct_proof();
 
-        // Split inner public inputs from proof
-        size_t num_public_inputs = instance->num_public_inputs();
-        // Create the combined result (optimized)
-        // Format: [num_public_inputs (4 bytes)] [public_inputs (32 bytes each)] [proof...]
+        // Calculate inner public inputs (excluding pairing point accumulator), consistent with CircuitProve
+        size_t num_inner_public_inputs = [&]() {
+            size_t num_public_inputs = instance->num_public_inputs();
+            // UltraFlavor uses DefaultIO::PUBLIC_INPUTS_SIZE for pairing point accumulator
+            constexpr size_t PAIRING_POINT_SIZE = 16; // DefaultIO::PUBLIC_INPUTS_SIZE
+            BB_ASSERT(num_public_inputs >= PAIRING_POINT_SIZE,
+                      "Public inputs should contain a pairing point accumulator.");
+            return num_public_inputs - PAIRING_POINT_SIZE;
+        }();
 
-        size_t total_size = 4 + (num_public_inputs * 32) + (proof.size() * 32);
+        // Create the combined result
+        // Format: [num_public_inputs (4 bytes)] [public_inputs (32 bytes each)] [proof...]
+        size_t total_size = 4 + (num_inner_public_inputs * 32) + (proof.size() * 32);
         result_vec.resize(total_size);
 
         uint8_t* ptr = result_vec.data();
 
-        // Pack num_public_inputs (4 bytes, big endian)
-        uint32_t num_pub_inputs_be = htonl(static_cast<uint32_t>(num_public_inputs));
+        // Pack num_inner_public_inputs (4 bytes, big endian, matches CircuitProve format)
+        uint32_t num_pub_inputs_be = htonl(static_cast<uint32_t>(num_inner_public_inputs));
         std::memcpy(ptr, &num_pub_inputs_be, 4);
         ptr += 4;
 
-        // Pack public inputs
-        for (const auto& fr : instance->public_inputs) {
-            bb::fr::serialize_to_buffer(fr, ptr);
+        // Pack inner public inputs (from proof, excluding pairing point accumulator)
+        // These are the first num_inner_public_inputs elements of the proof
+        for (size_t i = 0; i < num_inner_public_inputs; ++i) {
+            bb::fr::serialize_to_buffer(proof[i], ptr);
             ptr += 32;
         }
 
-        // Pack proof
-        for (const auto& fr : proof) {
-            bb::fr::serialize_to_buffer(fr, ptr);
+        // Pack proof (skip public inputs which were already extracted above)
+        for (size_t i = num_inner_public_inputs; i < proof.size(); ++i) {
+            bb::fr::serialize_to_buffer(proof[i], ptr);
             ptr += 32;
         }
     } // Destructors run here
